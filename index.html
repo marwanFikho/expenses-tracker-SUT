@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Expense Tracker</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Lightweight confetti library -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  
+  <!-- Background ripple layer (beneath content) -->
+  <div id="bg-ripple" aria-hidden="true"></div>
+  
+  <!-- Effects overlay for animations (confetti, sad mode visuals) -->
+  <div id="effects" aria-hidden="true"></div>
+
+  <div class="content">
+    <div class="container">
+      <div id="dashboard" class="page active">
+        
+        <div class="page-header">
+          
+          <div>
+            <h2 class="page-title">Dashboard</h2>
+            <p class="page-subtitle">Track your wallet and spending in one place.</p>
+          </div>
+          
+          <div class="card" style="min-width:240px;">
+            <h3>Wallet Balance</h3>
+            <h2 style="margin:6px 0 0;">
+              <span id="walletBalance">0</span> EGP
+            </h2>
+          </div>
+
+        </div>
+
+        <div class="grid grid-2">
+          
+          <div class="card">
+            <h3>Add Expense <span class="section-note">Plan before you pay</span></h3>
+            <input id="amount" type="number" placeholder="Amount" />
+            <input id="merchant" placeholder="Merchant/Place (what)" />
+            <button class="primary" onclick="startExpenseFlow()">Add Expense</button>
+          </div>
+          
+          <div class="card">
+            <h3>Recent Expenses</h3>
+            <div id="recentExpenses"></div>
+          </div>
+
+        </div>
+      </div>
+
+      <div id="profile" class="page">
+        
+        <div class="page-header">  
+          <div>
+            <h2 class="page-title">Profile</h2>
+            <p class="page-subtitle">Manage your wallet, caps, and preferences.</p>
+          </div>
+        </div>
+
+        <div class="grid grid-3">
+
+          <div class="card">
+            <h3>Add Money</h3>
+            <input id="addMoneyInput" type="number" placeholder="Amount" min="1" />
+            <input id="addMoneySource" type="text" placeholder="Source (e.g., salary, gift)" />
+            <button class="primary" onclick="topUpWallet()">Add Money</button>
+          </div>
+
+          <div class="card">
+            <h3>Expense Caps</h3>
+            <input id="capDay" type="number" placeholder="Daily Cap" />
+            <input id="capWeek" type="number" placeholder="Weekly Cap" />
+            <input id="capMonth" type="number" placeholder="Monthly Cap" />
+            <button class="primary" onclick="saveCaps()">Save Caps</button>
+          </div>
+
+          <div class="card">
+            <h3>Preferences</h3>
+            
+            <label>
+              <input id="aiPref" type="checkbox" checked /> Enable AI Advice
+            </label>
+            
+            <button class="primary" onclick="savePreferences()">Save Preferences</button>
+          </div>
+          
+          <div class="card">
+            <h3>Recent Income</h3>
+            <div id="incomeList"></div>
+          </div>
+
+        </div>
+      </div>
+
+      <div id="analytics" class="page">
+        
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">Analytics</h2>
+            <p class="page-subtitle">Understand trends and get tips.</p>
+          </div>
+        </div>
+        
+        <div class="grid grid-2">
+          
+          <div class="card">
+            <h3>Spending Summary</h3>
+            <div id="summaryTotals">Loading...</div>
+          </div>
+
+          <div class="card">
+            <h3>Trend Prediction</h3>
+            <div id="trendPrediction">Loading...</div>
+          </div>
+          
+        </div>
+
+        <!-- Row 1: Detailed Lists -->
+        <div class="grid grid-2" style="margin-top:16px;">
+
+          <div class="card">
+            <h3>Detailed Expenses</h3>
+            <div id="analyticsList"></div>
+          </div>
+          
+          <div class="card">
+            <h3>Recent Income</h3>
+            <div id="incomeAnalyticsList"></div>
+          </div>
+
+        </div>
+
+        <!-- Row 2: Charts -->
+        <div class="grid grid-2" style="margin-top:16px;">
+          
+          <div class="card">
+            <h3>Spending by Merchant</h3>
+            <canvas id="expenseChart" width="400" height="200"></canvas>
+          </div>
+          
+          <div class="card">
+            <h3>Income by Source</h3>
+            <canvas id="incomeChart" width="400" height="200"></canvas>
+          </div>
+
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>AI Advice</h3>
+          <div id="aiAdvice">Enable AI in Profile.</div>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+
+  <div class="nav">
+    <button onclick="showPage('dashboard')">Dashboard</button>
+    <button onclick="showPage('analytics')">Analytics</button>
+    <button onclick="showPage('profile')">Profile</button>
+    <button id="themeToggle" onclick="toggleTheme()">🌙</button>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirmModal" class="modal" aria-hidden="true" role="dialog" aria-labelledby="confirmTitle" aria-describedby="confirmDesc">
+    <div class="modal-content">
+      <h3 id="confirmTitle">Before you spend...</h3>
+      <p id="confirmDesc">Let’s quickly check if this expense is a need or a want.</p>
+
+      <div class="modal-section">
+        <label for="needWantSelect"><b>Is this a <i>Need</i> or a <i>Want</i>?</b></label>
+        <select id="needWantSelect">
+          <option value="need">Need</option>
+          <option value="want">Want</option>
+        </select>
+      </div>
+
+      <div class="modal-section">
+        <p id="habitSummary">Loading your habits...</p>
+      </div>
+
+      <div class="modal-section caps">
+        <p id="capsSummary">Caps: Weekly — <span id="weeklyCap">0</span> | Monthly — <span id="monthlyCap">0</span></p>
+        <p id="usageSummary">Usage: Weekly — <span id="weeklySpent">0</span> | Monthly — <span id="monthlySpent">0</span></p>
+      </div>
+
+      <div class="modal-actions">
+        <button class="secondary" onclick="cancelExpenseFlow()">Cancel</button>
+        <button class="primary" onclick="confirmExpenseFlow()">Confirm & Add</button>
+      </div>
+      
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
