@@ -12,6 +12,32 @@
 
 header('Content-Type: application/json');
 
+// Load .env if present (simple parser)
+function load_dotenv(string $path = null): array {
+    $path = $path ?? __DIR__ . '/.env';
+    $vars = [];
+    if (!file_exists($path)) return $vars;
+    $lines = preg_split('/\r?\n/', file_get_contents($path));
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '' || strpos($line, '#') === 0) continue;
+        if (!strpos($line, '=')) continue;
+        list($k, $v) = explode('=', $line, 2);
+        $k = trim($k);
+        $v = trim($v);
+        // remove surrounding quotes
+        if ((strpos($v, '"') === 0 && strrpos($v, '"') === strlen($v)-1) || (strpos($v, "'") === 0 && strrpos($v, "'") === strlen($v)-1)) {
+            $v = substr($v, 1, -1);
+        }
+        $vars[$k] = $v;
+        // populate PHP environment so getenv() works
+        putenv("$k=$v");
+        $_ENV[$k] = $v;
+    }
+    return $vars;
+}
+load_dotenv();
+
 if (!class_exists('SQLite3')) {
     http_response_code(500);
     echo json_encode(['error' => 'SQLite3 extension is not enabled. Install/enable php-sqlite3 (or pdo_sqlite) and restart PHP.']);
@@ -45,6 +71,55 @@ try {
             break;
         case 'prefs':
             handle_prefs($db, $method);
+            break;
+        case 'insights':
+            handle_insights($db, $method);
+            break;
+        case 'debug_env':
+            if ($method !== 'GET') fail(405, 'Method not allowed');
+            $pathEnv = __DIR__ . '/.env';
+            $exists = file_exists($pathEnv);
+            $content = null;
+            $readable = false;
+            $size = null;
+            if ($exists) {
+                $readable = is_readable($pathEnv);
+                $size = $readable ? filesize($pathEnv) : null;
+                $content = $readable ? file_get_contents($pathEnv) : null;
+            }
+            // attempt parse using our loader
+            $parsed = [];
+            if ($exists) {
+                $parsed = [];
+                $lines = preg_split('/\r?\n/', $content);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if ($line === '' || strpos($line, '#') === 0) continue;
+                    if (!strpos($line, '=')) continue;
+                    list($k, $v) = explode('=', $line, 2);
+                    $k = trim($k);
+                    $v = trim($v);
+                    if ((strpos($v, '"') === 0 && strrpos($v, '"') === strlen($v)-1) || (strpos($v, "'") === 0 && strrpos($v, "'") === strlen($v)-1)) {
+                        $v = substr($v, 1, -1);
+                    }
+                    $parsed[$k] = $v;
+                }
+            }
+            respond([
+                'env_file_path' => $pathEnv,
+                'exists' => $exists,
+                'is_readable' => $readable,
+                'filesize' => $size,
+                'content_preview' => $content ? substr($content, 0, 1024) : null,
+                'parsed' => $parsed,
+                'getenv_OPENAI_API_KEY' => getenv('OPENAI_API_KEY') ?: null,
+                'getenv_OPEN_AI_API_KEY' => getenv('OPEN_AI_API_KEY') ?: null,
+                'ENV_OPENAI_API_KEY' => $_ENV['OPENAI_API_KEY'] ?? null,
+                'ENV_OPEN_AI_API_KEY' => $_ENV['OPEN_AI_API_KEY'] ?? null,
+                'allow_url_fopen' => ini_get('allow_url_fopen'),
+                'curl_available' => function_exists('curl_init'),
+                'openssl_available' => extension_loaded('openssl'),
+            ]);
             break;
         default:
             fail(404, 'Unknown path');
@@ -179,7 +254,315 @@ function get_state(SQLite3 $db): array {
     ];
 }
 
-// ---------- DB helpers ----------
+function handle_insights(SQLite3 $db, string $method): void {
+    if ($method !== 'POST') fail(405, 'Method not allowed');
+    $body = @json_decode(file_get_contents('php://input'), true) ?: [];
+
+    $state = get_state($db);
+    if (empty($state['aiEnabled'])) {
+        respond(['ok' => false, 'error' => 'AI is disabled in preferences']);
+    }
+
+    // Build a concise prompt with recent expenses and caps
+    $expenses = array_slice($state['expenses'], 0, 50);
+    $rows = [];
+    foreach ($expenses as $e) {
+        $rows[] = sprintf("%s | %s | %s | %s", date('Y-m-d', intval($e['ts']/1000)), $e['merchant'], $e['amount'], $e['beneficial'] ? 'beneficial' : 'not_beneficial');
+    }
+
+    $prompt = "You are a helpful, friendly personal finance assistant.\n";
+    $prompt .= "User wallet: " . ($state['wallet'] ?? 0) . "\n";
+    $prompt .= "Caps: day=" . ($state['caps']['day'] ?? 0) . ", week=" . ($state['caps']['week'] ?? 0) . ", month=" . ($state['caps']['month'] ?? 0) . "\n";
+    $prompt .= "Recent expenses (date | merchant | amount | beneficial):\n" . implode("\n", $rows) . "\n\n";
+    $prompt .= "Please provide a short JSON object with keys: summary (1-2 sentences), suggestions (array of short actionable tips), categories (simple breakdown by merchant or type), anomalies (list any unusual large or rare expenses), and one concrete 3-step action plan to improve spending behavior. Keep language concise and friendly.";
+
+    $resp = call_llm($prompt);
+    if ($resp === null) {
+        $err = $GLOBALS['LLM_LAST_ERROR'] ?? 'LLM request failed or API key not configured';
+        fail(500, 'LLM request failed: ' . $err);
+    }
+
+    // Try to parse JSON from model, otherwise return raw text
+    $json = json_decode($resp, true);
+    if (json_last_error() === JSON_ERROR_NONE) {
+        respond(['ok' => true, 'insights' => $json]);
+    }
+
+    respond(['ok' => true, 'text' => $resp]);
+}
+
+function call_llm(string $prompt): ?string {
+    // reset last error
+    $GLOBALS['LLM_LAST_ERROR'] = null;
+
+    // --- Load API keys (support multiple providers) ---
+    $openrouter_key = getenv('OPENAI_API_KEY') ?: getenv('OPEN_AI_API_KEY') ?: ($_ENV['OPENAI_API_KEY'] ?? $_ENV['OPEN_AI_API_KEY'] ?? null);
+    $hf_key = getenv('HUGGINGFACE_API_KEY') ?: $_ENV['HUGGINGFACE_API_KEY'] ?? null;
+    if (!$openrouter_key && !$hf_key) {
+        $GLOBALS['LLM_LAST_ERROR'] = 'No API key found (set OPENAI_API_KEY/OPEN_AI_API_KEY or HUGGINGFACE_API_KEY in .env)';
+        error_log('LLM ERROR: ' . $GLOBALS['LLM_LAST_ERROR']);
+        return null;
+    }
+
+    // --- Prefer Hugging Face inference when configured ---
+    $hf_key = getenv('HUGGINGFACE_API_KEY') ?: getenv('HF_API_KEY') ?: $_ENV['HUGGINGFACE_API_KEY'] ?? $_ENV['HF_API_KEY'] ?? null;
+    $hf_url = getenv('HUGGINGFACE_API_URL') ?: getenv('HUGGINGFACE_API_INFERENCE') ?: $_ENV['HUGGINGFACE_API_URL'] ?? $_ENV['HUGGINGFACE_API_INFERENCE'] ?? null;
+    if ($hf_key && $hf_url) {
+        $payload = ['inputs' => $prompt, 'options' => ['use_cache' => false]];
+        $jsonPayload = json_encode($payload);
+
+        $hasCurl = function_exists('curl_init') && extension_loaded('openssl');
+        $hasFopen = ini_get('allow_url_fopen') && extension_loaded('openssl');
+        if (!$hasCurl && !$hasFopen) {
+            $GLOBALS['LLM_LAST_ERROR'] = 'PHP cannot make HTTPS requests: enable the openssl extension (and curl if available) in php.ini';
+            error_log('LLM ERROR: ' . $GLOBALS['LLM_LAST_ERROR']);
+            return null;
+        }
+
+        $targetUrl = $hf_url;
+        $authHeader = 'Authorization: Bearer ' . $hf_key;
+
+        // If Python helper exists and python is available, prefer it for DeepSeek-style encoding
+        $pythonHelper = __DIR__ . '/hf_infer.py';
+        $pythonAvailable = false;
+        $pyCheck = @shell_exec('python --version 2>&1');
+        if ($pyCheck && stripos($pyCheck, 'python') !== false && file_exists($pythonHelper)) {
+            $pythonAvailable = true;
+        }
+        if ($pythonAvailable) {
+            // build chat-completions style payload matching HF router example
+            $hfModel = 'deepseek-ai/DeepSeek-V3.2:novita';
+            $pyPayload = json_encode([
+                'messages' => [['role' => 'user', 'content' => $prompt]],
+                'model' => $hfModel,
+                'stream' => false
+            ]);
+            $escaped = escapeshellarg($pyPayload);
+            $cmd = "python " . escapeshellarg($pythonHelper) . " " . $escaped . " 2>&1";
+            $out = shell_exec($cmd);
+            if ($out === null) {
+                $GLOBALS['LLM_LAST_ERROR'] = 'Python helper failed or returned no output';
+            } else {
+                return $out;
+            }
+        }
+
+        if ($hasCurl) {
+            $ch = curl_init($targetUrl);
+            $curlOpts = [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/json',
+                    $authHeader
+                ],
+                CURLOPT_POSTFIELDS => $jsonPayload,
+                CURLOPT_TIMEOUT => 60
+            ];
+            // In local dev environments on Windows PHP/cURL may fail SSL verification.
+            // Relax verification for Hugging Face inference endpoint only (dev only).
+            if (strpos($targetUrl, 'huggingface') !== false) {
+                $curlOpts[CURLOPT_SSL_VERIFYPEER] = false;
+                $curlOpts[CURLOPT_SSL_VERIFYHOST] = false;
+            }
+            curl_setopt_array($ch, $curlOpts);
+            $res = curl_exec($ch);
+            $err = curl_error($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            error_log("LLM CURL RESPONSE (HF): HTTP $httpCode => $res");
+            if ($res === false) {
+                $GLOBALS['LLM_LAST_ERROR'] = 'cURL error: ' . $err;
+                error_log('LLM ERROR: ' . $GLOBALS['LLM_LAST_ERROR']);
+                return null;
+            } else {
+                $data = json_decode($res, true);
+                if (is_array($data)) {
+                    // common HF inference outputs: array of {generated_text} or {"generated_text": "..."}
+                    if (isset($data['generated_text'])) return $data['generated_text'];
+                    if (isset($data[0]['generated_text'])) return $data[0]['generated_text'];
+                    // some models return a string directly
+                }
+                // fallback: return raw string
+                return is_string($res) ? $res : json_encode($res);
+            }
+        } else {
+            $opts = [
+                'http' => [
+                    'method' => 'POST',
+                    'header' => "Content-Type: application/json\r\n" . $authHeader . "\r\n",
+                    'content' => $jsonPayload,
+                    'timeout' => 60
+                ]
+            ];
+            $context = stream_context_create($opts);
+            $res = @file_get_contents($targetUrl, false, $context);
+            if ($res === false) {
+                $hdr = $http_response_header ?? null;
+                $msg = 'file_get_contents failed';
+                if (is_array($hdr)) $msg .= ' — response headers: ' . implode(' | ', $hdr);
+                $GLOBALS['LLM_LAST_ERROR'] = $msg;
+                error_log('LLM ERROR: ' . $GLOBALS['LLM_LAST_ERROR']);
+                return null;
+            } else {
+                $data = json_decode($res, true);
+                if (is_array($data)) {
+                    if (isset($data['generated_text'])) return $data['generated_text'];
+                    if (isset($data[0]['generated_text'])) return $data[0]['generated_text'];
+                }
+                return is_string($res) ? $res : json_encode($res);
+            }
+        }
+        // If HF path failed, continue to try other providers below (if configured)
+    }
+
+    // --- Load primary and fallback models (do not default to an OpenAI model) ---
+    $primaryModel = getenv('OPENAI_MODEL') ?: getenv('OPEN_AI_MODEL') ?: ($_ENV['OPENAI_MODEL'] ?? $_ENV['OPEN_AI_MODEL'] ?? null);
+    $fallbackModel = getenv('OPENAI_FALLBACK_MODEL') ?: $_ENV['OPENAI_FALLBACK_MODEL'] ?? null;
+
+    $modelsToTry = [];
+    if ($primaryModel) $modelsToTry[] = $primaryModel;
+    if ($fallbackModel && $fallbackModel !== $primaryModel) $modelsToTry[] = $fallbackModel;
+
+    if (empty($modelsToTry)) {
+        $GLOBALS['LLM_LAST_ERROR'] = 'No model specified in environment (OPENAI_MODEL or OPEN_AI_MODEL)';
+        error_log('LLM ERROR: ' . $GLOBALS['LLM_LAST_ERROR']);
+        return null;
+    }
+
+    // If a fallback model exists but appears to be for a different provider than primary, ignore it.
+    if (count($modelsToTry) > 1) {
+        $a = $modelsToTry[0];
+        $b = $modelsToTry[1];
+        $detect = function($m) {
+            $m = strtolower($m);
+            if (strpos($m, 'google') !== false || strpos($m, 'gemini') !== false) return 'google';
+            if (strpos($m, 'openai') !== false || strpos($m, 'gpt-4') !== false || strpos($m, 'gpt-4o') !== false) return 'openai';
+            if (strpos($m, 'gpt-oss') !== false || strpos($m, 'oss') !== false) return 'openrouter';
+            return 'unknown';
+        };
+        $pa = $detect($a);
+        $pb = $detect($b);
+        if ($pa !== 'unknown' && $pb !== 'unknown' && $pa !== $pb) {
+            // drop the fallback
+            $modelsToTry = [$a];
+        }
+    }
+
+    // --- Detect provider / base URL ---
+    $openrouter_url = getenv('OPENROUTER_API_URL') ?: null;
+    $isOpenRouter = ($openrouter_key && strpos($openrouter_key, 'sk-or-') === 0) || $openrouter_url !== null;
+    $openrouter_base = $openrouter_url ?: 'https://api.openrouter.ai/v1/chat/completions';
+    $isHuggingFace = (bool)$hf_key;
+    $huggingface_base = 'https://api.huggingface-apis.com/v1/chat/completions';
+
+    // --- Prepare payload ---
+    $payloadBase = [
+        'messages' => [
+            ['role' => 'system', 'content' => 'You are a concise personal finance assistant.'],
+            ['role' => 'user', 'content' => $prompt]
+        ],
+        'temperature' => 0.6,
+        'max_tokens' => 600
+    ];
+
+    // --- Try each model ---
+    foreach ($modelsToTry as $model) {
+        $payload = $payloadBase;
+        $payload['model'] = $model;
+
+        $jsonPayload = json_encode($payload);
+        $res = null;
+
+        // Check capability: need either curl+openssl, or allow_url_fopen+openssl for HTTPS
+        $hasCurl = function_exists('curl_init') && extension_loaded('openssl');
+        $hasFopen = ini_get('allow_url_fopen') && extension_loaded('openssl');
+        if (!$hasCurl && !$hasFopen) {
+            $GLOBALS['LLM_LAST_ERROR'] = 'PHP cannot make HTTPS requests: enable the openssl extension (and curl if available) in php.ini';
+            error_log('LLM ERROR: ' . $GLOBALS['LLM_LAST_ERROR']);
+            return null;
+        }
+        // Choose endpoint and auth depending on provider availability
+        if ($isHuggingFace) {
+            $targetUrl = $huggingface_base;
+            $authHeader = 'Authorization: Bearer ' . $hf_key;
+        } else {
+            $targetUrl = $openrouter_base;
+            $authHeader = 'Authorization: Bearer ' . $openrouter_key;
+        }
+
+        if ($hasCurl) {
+            $ch = curl_init($targetUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/json',
+                    $authHeader
+                ],
+                CURLOPT_POSTFIELDS => $jsonPayload,
+                CURLOPT_TIMEOUT => 60
+            ]);
+            $res = curl_exec($ch);
+            $err = curl_error($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+            error_log("LLM CURL RESPONSE: HTTP $httpCode => $res");
+
+            if ($res === false) {
+                $GLOBALS['LLM_LAST_ERROR'] = 'cURL error: ' . $err;
+                error_log('LLM ERROR: ' . $GLOBALS['LLM_LAST_ERROR']);
+                curl_close($ch);
+                continue;
+            }
+            curl_close($ch);
+
+            if ($httpCode >= 400) {
+                $GLOBALS['LLM_LAST_ERROR'] = "HTTP $httpCode: $res";
+                error_log('LLM ERROR: ' . $GLOBALS['LLM_LAST_ERROR']);
+                continue; // try fallback
+            }
+        } else {
+            $opts = [
+                'http' => [
+                    'method' => 'POST',
+                    'header' => "Content-Type: application/json\r\n" . $authHeader . "\r\n",
+                    'content' => $jsonPayload,
+                    'timeout' => 60
+                ]
+            ];
+            $context = stream_context_create($opts);
+            $res = @file_get_contents($targetUrl, false, $context);
+            if ($res === false) {
+                $hdr = $http_response_header ?? null;
+                $msg = 'file_get_contents failed';
+                if (is_array($hdr)) $msg .= ' — response headers: ' . implode(' | ', $hdr);
+                $GLOBALS['LLM_LAST_ERROR'] = $msg;
+                error_log('LLM ERROR: ' . $GLOBALS['LLM_LAST_ERROR']);
+                continue; // try fallback
+            }
+        }
+
+        // --- Parse response ---
+        $data = json_decode($res, true);
+        if ($data && isset($data['choices'][0]['message']['content'])) {
+            return $data['choices'][0]['message']['content'];
+        }
+        if ($data && isset($data['choices'][0]['text'])) {
+            return $data['choices'][0]['text'];
+        }
+
+        // If no usable content, log raw response
+        error_log("LLM WARNING: model $model returned unexpected response: $res");
+    }
+
+    // If all models fail
+    error_log("LLM ERROR: All models failed to return a valid response");
+    return null;
+}
+
+// extra functions for db
 function get_db(): SQLite3 {
     $dbPath = __DIR__ . '/data.sqlite';
     $db = new SQLite3($dbPath);

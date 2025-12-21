@@ -10,6 +10,26 @@ php -S localhost:8000
 ```
 3) Open http://localhost:8000 in the browser.
 
+## AI insights (optional)
+
+To enable server-side AI insights you must set an environment variable with your OpenAI-compatible API key before starting the PHP server:
+
+On Windows (PowerShell):
+
+```powershell
+$env:OPENAI_API_KEY = "sk-..."
+php -S localhost:8000
+```
+
+On macOS / Linux:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+php -S localhost:8000
+```
+
+Endpoint: `POST /api.php?path=insights` — server will read recent expenses and return AI-generated insights. The response attempts to return a JSON object under the `insights` key; if parsing fails the raw text from the model is returned under `text`.
+
 ## API overview (all JSON)
 - `GET /api.php?path=state` → `{ wallet, caps, expenses, incomes, aiEnabled }`
 - `POST /api.php?path=expense` body `{ amount, merchant, beneficial, ts? }`
