@@ -1,3 +1,19 @@
+// ==================== Auth Check ====================
+function checkAuth() {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    window.location.href = 'login.html';
+    return false;
+  }
+  return true;
+}
+
+function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user_id');
+  window.location.href = 'login.html';
+}
+
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -12,8 +28,26 @@ let aiEnabled = true;
 const API_BASE = 'api.php';
 
 async function fetchJSON(url, options = {}){
+  const token = localStorage.getItem('token');
+  if (!token) {
+    window.location.href = 'login.html';
+    throw new Error('Not authenticated');
+  }
+
+  const headers = options.headers || {};
+  headers['Authorization'] = `Bearer ${token}`;
+  options.headers = headers;
+
   const res = await fetch(url, options);
   const data = await res.json();
+  
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user_id');
+    window.location.href = 'login.html';
+    throw new Error('Session expired');
+  }
+  
   if(!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
@@ -343,6 +377,7 @@ function toggleTheme() {
 }
 
 window.onload = () => {
+  if (!checkAuth()) return;
   const toggleBtn = document.getElementById('themeToggle');
   toggleBtn.innerText = document.body.classList.contains('dark-mode') ? "☀️" : "🌙";
   refreshState();

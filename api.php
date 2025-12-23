@@ -1,60 +1,151 @@
 <?php
-// Minimal PHP + SQLite API for the expense tracker.
-// Endpoints (all JSON):
-// GET  /api.php?path=state
-// POST /api.php?path=expense        { amount, merchant, beneficial (0|1), ts? }
-// PUT  /api.php?path=expense&id=ID   { amount, merchant, beneficial, ts? }
-// DELETE /api.php?path=expense&id=ID
-// POST /api.php?path=income         { amount, source, ts? }
-// POST /api.php?path=caps           { day, week, month }
-// POST /api.php?path=prefs          { aiEnabled }
-// Utility: set header("Access-Control-Allow-Origin: *") if serving from another origin.
+// Expense Tracker API: MySQL + User Auth
+// Endpoints:
+// POST /api.php?path=auth/register { email, password }
+// POST /api.php?path=auth/login    { email, password }
+// POST /api.php?path=auth/logout   (requires token)
+// GET  /api.php?path=state        (requires token)
+// POST /api.php?path=expense      { amount, merchant, beneficial, ts? } (requires token)
+// etc.
 
 header('Content-Type: application/json');
 
-if (!class_exists('SQLite3')) {
-    http_response_code(500);
-    echo json_encode(['error' => 'SQLite3 extension is not enabled. Install/enable php-sqlite3 (or pdo_sqlite) and restart PHP.']);
-    exit;
-}
+// ==================== Config ====================
+$db_host = 'localhost';
+$db_user = 'root';          // adjust to your MySQL user
+$db_pass = 'root';              // adjust to your MySQL password
+$db_name = 'expense_tracker';
+$jwt_secret = 'root'; // change to strong secret
 
+// ==================== DB Connection ====================
+$db = new mysqli($db_host, $db_user, $db_pass, $db_name);
+if ($db->connect_error) {
+    fail(500, "Database connection failed: " . $db->connect_error);
+}
+$db->set_charset('utf8mb4');
+
+// ==================== Router ====================
 $method = $_SERVER['REQUEST_METHOD'];
 $path = $_GET['path'] ?? '';
 
 try {
-    $db = get_db();
-    ensure_schema($db);
     if ($method === 'OPTIONS') {
         http_response_code(204);
         exit;
     }
 
     switch ($path) {
-        case 'state':
-            if ($method !== 'GET') fail(405, 'Method not allowed');
-            respond(get_state($db));
+        case 'auth/register':
+            handle_register($db, $jwt_secret);
             break;
-        case 'expense':
-            handle_expense($db, $method);
+        case 'auth/login':
+            handle_login($db, $jwt_secret);
             break;
-        case 'income':
-            handle_income($db, $method);
-            break;
-        case 'caps':
-            handle_caps($db, $method);
-            break;
-        case 'prefs':
-            handle_prefs($db, $method);
+        case 'auth/logout':
+            handle_logout();
             break;
         default:
-            fail(404, 'Unknown path');
+            // Protected routes: verify token
+            $token = get_token();
+            $user_id = verify_token($token, $jwt_secret);
+            if (!$user_id) fail(401, 'Unauthorized');
+
+            switch ($path) {
+                case 'state':
+                    if ($method !== 'GET') fail(405, 'Method not allowed');
+                    respond(get_state($db, $user_id));
+                    break;
+                case 'expense':
+                    handle_expense($db, $user_id, $method);
+                    break;
+                case 'income':
+                    handle_income($db, $user_id, $method);
+                    break;
+                case 'caps':
+                    handle_caps($db, $user_id, $method);
+                    break;
+                case 'prefs':
+                    handle_prefs($db, $user_id, $method);
+                    break;
+                default:
+                    fail(404, 'Unknown path');
+            }
     }
 } catch (Exception $e) {
     fail(500, $e->getMessage());
 }
 
-// ---------- Handlers ----------
-function handle_expense(SQLite3 $db, string $method): void {
+// ==================== Auth Handlers ====================
+function handle_register(mysqli $db, string $jwt_secret): void {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') fail(405, 'Method not allowed');
+    $body = read_json();
+    $email = trim($body['email'] ?? '');
+    $password = $body['password'] ?? '';
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) fail(400, 'Invalid email');
+    if (strlen($password) < 6) fail(400, 'Password must be at least 6 characters');
+
+    // Check if user exists
+    $stmt = $db->prepare('SELECT id FROM users WHERE email = ?');
+    $stmt->bind_param('s', $email);
+    $stmt->execute();
+    if ($stmt->get_result()->num_rows > 0) fail(400, 'Email already registered');
+
+    // Create user
+    $hash = password_hash($password, PASSWORD_BCRYPT);
+    $stmt = $db->prepare('INSERT INTO users(email, password_hash) VALUES (?, ?)');
+    $stmt->bind_param('ss', $email, $hash);
+    if (!$stmt->execute()) fail(500, 'Failed to create user');
+
+    $user_id = $db->insert_id;
+
+    // Initialize wallet, caps, prefs
+    $stmt = $db->prepare('INSERT INTO wallet(user_id, balance) VALUES (?, 0)');
+    $stmt->bind_param('i', $user_id);
+    $stmt->execute();
+
+    $stmt = $db->prepare('INSERT INTO caps(user_id, day, week, month) VALUES (?, 0, 0, 0)');
+    $stmt->bind_param('i', $user_id);
+    $stmt->execute();
+
+    $stmt = $db->prepare('INSERT INTO prefs(user_id, ai_enabled) VALUES (?, 1)');
+    $stmt->bind_param('i', $user_id);
+    $stmt->execute();
+
+    $token = create_token($user_id, $jwt_secret);
+    respond(['ok' => true, 'token' => $token, 'user_id' => $user_id]);
+}
+
+function handle_login(mysqli $db, string $jwt_secret): void {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') fail(405, 'Method not allowed');
+    $body = read_json();
+    $email = trim($body['email'] ?? '');
+    $password = $body['password'] ?? '';
+
+    if (!$email || !$password) fail(400, 'Email and password required');
+
+    $stmt = $db->prepare('SELECT id, password_hash FROM users WHERE email = ?');
+    $stmt->bind_param('s', $email);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows === 0) fail(401, 'Invalid email or password');
+
+    $user = $result->fetch_assoc();
+    if (!password_verify($password, $user['password_hash'])) fail(401, 'Invalid email or password');
+
+    $token = create_token($user['id'], $jwt_secret);
+    respond(['ok' => true, 'token' => $token, 'user_id' => $user['id']]);
+}
+
+function handle_logout(): void {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') fail(405, 'Method not allowed');
+    // Token is invalidated client-side; server just confirms
+    respond(['ok' => true]);
+}
+
+// ==================== Protected Handlers ====================
+function handle_expense(mysqli $db, int $user_id, string $method): void {
     if ($method === 'POST') {
         $body = read_json();
         $amount = floatval($body['amount'] ?? 0);
@@ -63,17 +154,21 @@ function handle_expense(SQLite3 $db, string $method): void {
         $ts = intval($body['ts'] ?? time()*1000);
         if ($amount <= 0 || $merchant === '') fail(400, 'Amount>0 and merchant required');
 
-        $db->exec('BEGIN');
-        $stmt = $db->prepare('INSERT INTO expenses(amount, merchant, beneficial, ts) VALUES (?, ?, ?, ?)');
-        $stmt->bindValue(1, $amount, SQLITE3_FLOAT);
-        $stmt->bindValue(2, $merchant, SQLITE3_TEXT);
-        $stmt->bindValue(3, $beneficial, SQLITE3_INTEGER);
-        $stmt->bindValue(4, $ts, SQLITE3_INTEGER);
-        $stmt->execute();
-        adjust_wallet($db, -$amount);
-        $db->exec('COMMIT');
+        $db->begin_transaction();
+        try {
+            $stmt = $db->prepare('INSERT INTO expenses(user_id, amount, merchant, beneficial, ts) VALUES (?, ?, ?, ?, ?)');
+            $stmt->bind_param('idsii', $user_id, $amount, $merchant, $beneficial, $ts);
+            $stmt->execute();
+            $expense_id = $db->insert_id;
 
-        respond(['ok' => true, 'id' => $db->lastInsertRowID()]);
+            adjust_wallet($db, $user_id, -$amount);
+            $db->commit();
+
+            respond(['ok' => true, 'id' => $expense_id]);
+        } catch (Exception $e) {
+            $db->rollback();
+            throw $e;
+        }
     } elseif ($method === 'PUT') {
         $id = intval($_GET['id'] ?? 0);
         if ($id <= 0) fail(400, 'Expense id required');
@@ -84,40 +179,57 @@ function handle_expense(SQLite3 $db, string $method): void {
         $ts = intval($body['ts'] ?? time()*1000);
         if ($amount <= 0 || $merchant === '') fail(400, 'Amount>0 and merchant required');
 
-        $db->exec('BEGIN');
-        $old = fetch_one($db, 'SELECT amount FROM expenses WHERE id = ?', [$id]);
-        if (!$old) { $db->exec('ROLLBACK'); fail(404, 'Expense not found'); }
-        $delta = $old['amount'] - $amount; // refund old, charge new
+        $db->begin_transaction();
+        try {
+            // Verify ownership
+            $stmt = $db->prepare('SELECT amount FROM expenses WHERE id = ? AND user_id = ?');
+            $stmt->bind_param('ii', $id, $user_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($result->num_rows === 0) { $db->rollback(); fail(404, 'Expense not found'); }
+            $old = $result->fetch_assoc();
 
-        $stmt = $db->prepare('UPDATE expenses SET amount=?, merchant=?, beneficial=?, ts=? WHERE id=?');
-        $stmt->bindValue(1, $amount, SQLITE3_FLOAT);
-        $stmt->bindValue(2, $merchant, SQLITE3_TEXT);
-        $stmt->bindValue(3, $beneficial, SQLITE3_INTEGER);
-        $stmt->bindValue(4, $ts, SQLITE3_INTEGER);
-        $stmt->bindValue(5, $id, SQLITE3_INTEGER);
-        $stmt->execute();
-        adjust_wallet($db, $delta);
-        $db->exec('COMMIT');
+            $delta = $old['amount'] - $amount;
+            $stmt = $db->prepare('UPDATE expenses SET amount=?, merchant=?, beneficial=?, ts=? WHERE id=? AND user_id=?');
+            $stmt->bind_param('dssiii', $amount, $merchant, $beneficial, $ts, $id, $user_id);
+            $stmt->execute();
+            adjust_wallet($db, $user_id, $delta);
+            $db->commit();
 
-        respond(['ok' => true]);
+            respond(['ok' => true]);
+        } catch (Exception $e) {
+            $db->rollback();
+            throw $e;
+        }
     } elseif ($method === 'DELETE') {
         $id = intval($_GET['id'] ?? 0);
         if ($id <= 0) fail(400, 'Expense id required');
-        $db->exec('BEGIN');
-        $old = fetch_one($db, 'SELECT amount FROM expenses WHERE id = ?', [$id]);
-        if (!$old) { $db->exec('ROLLBACK'); fail(404, 'Expense not found'); }
-        $stmt = $db->prepare('DELETE FROM expenses WHERE id = ?');
-        $stmt->bindValue(1, $id, SQLITE3_INTEGER);
-        $stmt->execute();
-        adjust_wallet($db, $old['amount']);
-        $db->exec('COMMIT');
-        respond(['ok' => true]);
+        $db->begin_transaction();
+        try {
+            $stmt = $db->prepare('SELECT amount FROM expenses WHERE id = ? AND user_id = ?');
+            $stmt->bind_param('ii', $id, $user_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($result->num_rows === 0) { $db->rollback(); fail(404, 'Expense not found'); }
+            $old = $result->fetch_assoc();
+
+            $stmt = $db->prepare('DELETE FROM expenses WHERE id = ? AND user_id = ?');
+            $stmt->bind_param('ii', $id, $user_id);
+            $stmt->execute();
+            adjust_wallet($db, $user_id, $old['amount']);
+            $db->commit();
+
+            respond(['ok' => true]);
+        } catch (Exception $e) {
+            $db->rollback();
+            throw $e;
+        }
     } else {
         fail(405, 'Method not allowed');
     }
 }
 
-function handle_income(SQLite3 $db, string $method): void {
+function handle_income(mysqli $db, int $user_id, string $method): void {
     if ($method !== 'POST') fail(405, 'Method not allowed');
     $body = read_json();
     $amount = floatval($body['amount'] ?? 0);
@@ -125,127 +237,141 @@ function handle_income(SQLite3 $db, string $method): void {
     $ts = intval($body['ts'] ?? time()*1000);
     if ($amount <= 0 || $source === '') fail(400, 'Amount>0 and source required');
 
-    $db->exec('BEGIN');
-    $stmt = $db->prepare('INSERT INTO incomes(amount, source, ts) VALUES (?, ?, ?)');
-    $stmt->bindValue(1, $amount, SQLITE3_FLOAT);
-    $stmt->bindValue(2, $source, SQLITE3_TEXT);
-    $stmt->bindValue(3, $ts, SQLITE3_INTEGER);
-    $stmt->execute();
-    adjust_wallet($db, $amount);
-    $db->exec('COMMIT');
+    $db->begin_transaction();
+    try {
+        $stmt = $db->prepare('INSERT INTO incomes(user_id, amount, source, ts) VALUES (?, ?, ?, ?)');
+        $stmt->bind_param('idsi', $user_id, $amount, $source, $ts);
+        $stmt->execute();
+        $income_id = $db->insert_id;
 
-    respond(['ok' => true, 'id' => $db->lastInsertRowID()]);
+        adjust_wallet($db, $user_id, $amount);
+        $db->commit();
+
+        respond(['ok' => true, 'id' => $income_id]);
+    } catch (Exception $e) {
+        $db->rollback();
+        throw $e;
+    }
 }
 
-function handle_caps(SQLite3 $db, string $method): void {
+function handle_caps(mysqli $db, int $user_id, string $method): void {
     if ($method !== 'POST') fail(405, 'Method not allowed');
     $body = read_json();
     $day = floatval($body['day'] ?? 0);
     $week = floatval($body['week'] ?? 0);
     $month = floatval($body['month'] ?? 0);
 
-    $stmt = $db->prepare('UPDATE caps SET day=?, week=?, month=? WHERE id=1');
-    $stmt->bindValue(1, $day, SQLITE3_FLOAT);
-    $stmt->bindValue(2, $week, SQLITE3_FLOAT);
-    $stmt->bindValue(3, $month, SQLITE3_FLOAT);
+    $stmt = $db->prepare('UPDATE caps SET day=?, week=?, month=? WHERE user_id=?');
+    $stmt->bind_param('dddi', $day, $week, $month, $user_id);
     $stmt->execute();
 
     respond(['ok' => true]);
 }
 
-function handle_prefs(SQLite3 $db, string $method): void {
+function handle_prefs(mysqli $db, int $user_id, string $method): void {
     if ($method !== 'POST') fail(405, 'Method not allowed');
     $body = read_json();
     $ai = !empty($body['aiEnabled']) ? 1 : 0;
-    $stmt = $db->prepare('UPDATE prefs SET ai_enabled=? WHERE id=1');
-    $stmt->bindValue(1, $ai, SQLITE3_INTEGER);
+
+    $stmt = $db->prepare('UPDATE prefs SET ai_enabled=? WHERE user_id=?');
+    $stmt->bind_param('ii', $ai, $user_id);
     $stmt->execute();
+
     respond(['ok' => true]);
 }
 
-function get_state(SQLite3 $db): array {
-    $walletRow = fetch_one($db, 'SELECT balance FROM wallet WHERE id=1', []);
-    $capsRow = fetch_one($db, 'SELECT day, week, month FROM caps WHERE id=1', []);
-    $expenses = fetch_all($db, 'SELECT id, amount, merchant, beneficial, ts FROM expenses ORDER BY ts DESC');
-    $incomes = fetch_all($db, 'SELECT id, amount, source, ts FROM incomes ORDER BY ts DESC');
-    $prefs = fetch_one($db, 'SELECT ai_enabled FROM prefs WHERE id=1', []);
-
-    return [
-        'wallet' => $walletRow ? floatval($walletRow['balance']) : 0,
-        'caps' => $capsRow ?: ['day' => 0, 'week' => 0, 'month' => 0],
-        'expenses' => $expenses,
-        'incomes' => $incomes,
-        'aiEnabled' => $prefs ? (bool)$prefs['ai_enabled'] : true,
-    ];
-}
-
-// ---------- DB helpers ----------
-function get_db(): SQLite3 {
-    $dbPath = __DIR__ . '/data.sqlite';
-    $db = new SQLite3($dbPath);
-    $db->enableExceptions(true);
-    return $db;
-}
-
-function ensure_schema(SQLite3 $db): void {
-    $db->exec('CREATE TABLE IF NOT EXISTS wallet (id INTEGER PRIMARY KEY, balance REAL NOT NULL)');
-    $db->exec('CREATE TABLE IF NOT EXISTS expenses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        amount REAL NOT NULL,
-        merchant TEXT NOT NULL,
-        beneficial INTEGER NOT NULL DEFAULT 0,
-        ts INTEGER NOT NULL
-    )');
-    $db->exec('CREATE TABLE IF NOT EXISTS incomes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        amount REAL NOT NULL,
-        source TEXT NOT NULL,
-        ts INTEGER NOT NULL
-    )');
-    $db->exec('CREATE TABLE IF NOT EXISTS caps (
-        id INTEGER PRIMARY KEY,
-        day REAL NOT NULL DEFAULT 0,
-        week REAL NOT NULL DEFAULT 0,
-        month REAL NOT NULL DEFAULT 0
-    )');
-    $db->exec('CREATE TABLE IF NOT EXISTS prefs (
-        id INTEGER PRIMARY KEY,
-        ai_enabled INTEGER NOT NULL DEFAULT 1
-    )');
-
-    // Seed single rows for wallet and caps
-    $db->exec('INSERT OR IGNORE INTO wallet(id, balance) VALUES (1, 0)');
-    $db->exec('INSERT OR IGNORE INTO caps(id, day, week, month) VALUES (1, 0, 0, 0)');
-    $db->exec('INSERT OR IGNORE INTO prefs(id, ai_enabled) VALUES (1, 1)');
-}
-
-function adjust_wallet(SQLite3 $db, float $delta): void {
-    $stmt = $db->prepare('UPDATE wallet SET balance = balance + ? WHERE id=1');
-    $stmt->bindValue(1, $delta, SQLITE3_FLOAT);
+// ==================== DB Helpers ====================
+function adjust_wallet(mysqli $db, int $user_id, float $delta): void {
+    $stmt = $db->prepare('UPDATE wallet SET balance = balance + ? WHERE user_id=?');
+    $stmt->bind_param('di', $delta, $user_id);
     $stmt->execute();
 }
 
-function fetch_one(SQLite3 $db, string $sql, array $params): ?array {
-    $stmt = $db->prepare($sql);
-    foreach ($params as $i => $val) {
-        $stmt->bindValue($i+1, $val, is_int($val) ? SQLITE3_INTEGER : (is_float($val) ? SQLITE3_FLOAT : SQLITE3_TEXT));
-    }
-    $res = $stmt->execute();
-    $row = $res->fetchArray(SQLITE3_ASSOC);
-    return $row ?: null;
+function get_state(mysqli $db, int $user_id): array {
+    $wallet_stmt = $db->prepare('SELECT balance FROM wallet WHERE user_id=?');
+    $wallet_stmt->bind_param('i', $user_id);
+    $wallet_stmt->execute();
+    $wallet_row = $wallet_stmt->get_result()->fetch_assoc();
+
+    $caps_stmt = $db->prepare('SELECT day, week, month FROM caps WHERE user_id=?');
+    $caps_stmt->bind_param('i', $user_id);
+    $caps_stmt->execute();
+    $caps_row = $caps_stmt->get_result()->fetch_assoc();
+
+    $expenses_stmt = $db->prepare('SELECT id, amount, merchant, beneficial, ts FROM expenses WHERE user_id=? ORDER BY ts DESC');
+    $expenses_stmt->bind_param('i', $user_id);
+    $expenses_stmt->execute();
+    $expenses = [];
+    $result = $expenses_stmt->get_result();
+    while ($row = $result->fetch_assoc()) { $expenses[] = $row; }
+
+    $incomes_stmt = $db->prepare('SELECT id, amount, source, ts FROM incomes WHERE user_id=? ORDER BY ts DESC');
+    $incomes_stmt->bind_param('i', $user_id);
+    $incomes_stmt->execute();
+    $incomes = [];
+    $result = $incomes_stmt->get_result();
+    while ($row = $result->fetch_assoc()) { $incomes[] = $row; }
+
+    $prefs_stmt = $db->prepare('SELECT ai_enabled FROM prefs WHERE user_id=?');
+    $prefs_stmt->bind_param('i', $user_id);
+    $prefs_stmt->execute();
+    $prefs_row = $prefs_stmt->get_result()->fetch_assoc();
+
+    return [
+        'wallet' => $wallet_row ? floatval($wallet_row['balance']) : 0,
+        'caps' => $caps_row ?: ['day' => 0, 'week' => 0, 'month' => 0],
+        'expenses' => $expenses,
+        'incomes' => $incomes,
+        'aiEnabled' => $prefs_row ? (bool)$prefs_row['ai_enabled'] : true,
+    ];
 }
 
-function fetch_all(SQLite3 $db, string $sql, array $params = []): array {
-    $stmt = $db->prepare($sql);
-    foreach ($params as $i => $val) {
-        $stmt->bindValue($i+1, $val, is_int($val) ? SQLITE3_INTEGER : (is_float($val) ? SQLITE3_FLOAT : SQLITE3_TEXT));
-    }
-    $res = $stmt->execute();
-    $rows = [];
-    while ($row = $res->fetchArray(SQLITE3_ASSOC)) { $rows[] = $row; }
-    return $rows;
+// ==================== JWT Helpers ====================
+function create_token(int $user_id, string $secret): string {
+    $header = ['alg' => 'HS256', 'typ' => 'JWT'];
+    $payload = ['user_id' => $user_id, 'exp' => time() + 7*24*3600]; // 7 days
+    $header_encoded = rtrim(strtr(base64_encode(json_encode($header)), '+/', '-_'), '=');
+    $payload_encoded = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
+    $signature = hash_hmac('sha256', "$header_encoded.$payload_encoded", $secret, true);
+    $signature_encoded = rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
+    return "$header_encoded.$payload_encoded.$signature_encoded";
 }
 
+function verify_token(string $token, string $secret): ?int {
+    if (!$token) return null;
+    $parts = explode('.', $token);
+    if (count($parts) !== 3) return null;
+
+    list($header_encoded, $payload_encoded, $signature_encoded) = $parts;
+
+    // Verify signature
+    $signature_expected = hash_hmac('sha256', "$header_encoded.$payload_encoded", $secret, true);
+    $signature_expected_encoded = rtrim(strtr(base64_encode($signature_expected), '+/', '-_'), '=');
+    if (!hash_equals($signature_expected_encoded, $signature_encoded)) return null;
+
+    // Decode payload
+    $payload_decoded = json_decode(base64_decode(strtr($payload_encoded, '-_', '+/')), true);
+    if (!$payload_decoded) return null;
+
+    // Check expiry
+    if (($payload_decoded['exp'] ?? 0) < time()) return null;
+
+    return $payload_decoded['user_id'] ?? null;
+}
+
+function get_token(): ?string {
+    $headers = getallheaders();
+    foreach ($headers as $key => $value) {
+        if (strtolower($key) === 'authorization') {
+            if (preg_match('/Bearer\s+(.+)/', $value, $m)) {
+                return $m[1];
+            }
+        }
+    }
+    return $_GET['token'] ?? null;
+}
+
+// ==================== Utilities ====================
 function read_json(): array {
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);
