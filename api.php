@@ -1,30 +1,29 @@
 <?php
-// Expense Tracker API: MySQL + User Auth
+
 // Endpoints:
 // POST /api.php?path=auth/register { email, password }
 // POST /api.php?path=auth/login    { email, password }
 // POST /api.php?path=auth/logout   (requires token)
 // GET  /api.php?path=state        (requires token)
 // POST /api.php?path=expense      { amount, merchant, beneficial, ts? } (requires token)
-// etc.
 
 header('Content-Type: application/json');
 
-// ==================== Config ====================
+// Config
 $db_host = 'localhost';
-$db_user = 'root';          // adjust to your MySQL user
-$db_pass = 'root';              // adjust to your MySQL password
+$db_user = 'root';
+$db_pass = 'root';
 $db_name = 'expense_tracker';
-$jwt_secret = 'root'; // change to strong secret
+$jwt_secret = 'root';
 
-// ==================== DB Connection ====================
+// DB Connection
 $db = new mysqli($db_host, $db_user, $db_pass, $db_name);
 if ($db->connect_error) {
     fail(500, "Database connection failed: " . $db->connect_error);
 }
 $db->set_charset('utf8mb4');
 
-// ==================== Router ====================
+// Router
 $method = $_SERVER['REQUEST_METHOD'];
 $path = $_GET['path'] ?? '';
 
@@ -45,7 +44,6 @@ try {
             handle_logout();
             break;
         default:
-            // Protected routes: verify token
             $token = get_token();
             $user_id = verify_token($token, $jwt_secret);
             if (!$user_id) fail(401, 'Unauthorized');
@@ -75,7 +73,7 @@ try {
     fail(500, $e->getMessage());
 }
 
-// ==================== Auth Handlers ====================
+// Auth Handlers
 function handle_register(mysqli $db, string $jwt_secret): void {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') fail(405, 'Method not allowed');
     $body = read_json();
@@ -140,11 +138,10 @@ function handle_login(mysqli $db, string $jwt_secret): void {
 
 function handle_logout(): void {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') fail(405, 'Method not allowed');
-    // Token is invalidated client-side; server just confirms
     respond(['ok' => true]);
 }
 
-// ==================== Protected Handlers ====================
+// Protected Handlers
 function handle_expense(mysqli $db, int $user_id, string $method): void {
     if ($method === 'POST') {
         $body = read_json();
@@ -181,7 +178,6 @@ function handle_expense(mysqli $db, int $user_id, string $method): void {
 
         $db->begin_transaction();
         try {
-            // Verify ownership
             $stmt = $db->prepare('SELECT amount FROM expenses WHERE id = ? AND user_id = ?');
             $stmt->bind_param('ii', $id, $user_id);
             $stmt->execute();
@@ -280,7 +276,7 @@ function handle_prefs(mysqli $db, int $user_id, string $method): void {
     respond(['ok' => true]);
 }
 
-// ==================== DB Helpers ====================
+// DB Helpers
 function adjust_wallet(mysqli $db, int $user_id, float $delta): void {
     $stmt = $db->prepare('UPDATE wallet SET balance = balance + ? WHERE user_id=?');
     $stmt->bind_param('di', $delta, $user_id);
@@ -326,7 +322,7 @@ function get_state(mysqli $db, int $user_id): array {
     ];
 }
 
-// ==================== JWT Helpers ====================
+// JWT Helpers
 function create_token(int $user_id, string $secret): string {
     $header = ['alg' => 'HS256', 'typ' => 'JWT'];
     $payload = ['user_id' => $user_id, 'exp' => time() + 7*24*3600]; // 7 days
@@ -371,7 +367,7 @@ function get_token(): ?string {
     return $_GET['token'] ?? null;
 }
 
-// ==================== Utilities ====================
+// Utilities
 function read_json(): array {
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);

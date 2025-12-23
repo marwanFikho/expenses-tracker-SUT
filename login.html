@@ -36,7 +36,7 @@
             </p>
           </div>
 
-          <div id="errorMsg" style="color: #dc3545; margin-top: 16px; text-align: center; display: none;"></div>
+          <div id="errorMsg" style="color: #d63343; margin-top: 16px; text-align: center; display: none;"></div>
         </div>
       </div>
     </div>
@@ -68,7 +68,6 @@ async function login() {
       return;
     }
 
-    // Save token and redirect
     localStorage.setItem('token', data.token);
     localStorage.setItem('user_id', data.user_id);
     window.location.href = 'index.html';
@@ -112,7 +111,6 @@ async function register() {
       return;
     }
 
-    // Save token and redirect
     localStorage.setItem('token', data.token);
     localStorage.setItem('user_id', data.user_id);
     window.location.href = 'index.html';
@@ -142,7 +140,6 @@ function showError(msg) {
   errorEl.style.display = 'block';
 }
 
-// If already logged in, go to dashboard
 window.onload = () => {
   const token = localStorage.getItem('token');
   if (token) {
