@@ -168,23 +168,52 @@ button.primary {
 button.primary:hover { background: #0056b3; transform: translateY(-2px); }
 
 
+
 .card #aispace{
     display: flex;
+    align-items: center;
     justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 .card #aispace .primary{
-    width: 15%;
-    padding: 12px;
-    background: #007bff;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 15px;
-    cursor: pointer;
-    font-weight: 500;
-    transition: background 0.3s, transform 0.2s;
+    width: auto;
+    padding: 10px 14px;
+    min-width: 140px;
 }
+
+#aiAdvice{
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: #f7f9fc;
+    border: 1px solid #e2e6ed;
+    border-radius: 10px;
+    line-height: 1.6;
+    white-space: normal;
+    max-height: 360px;
+    overflow-y: auto;
+    font-size: 14px;
+}
+
+.dark-mode #aiAdvice{
+    background: #1b1d22;
+    border-color: #2d313a;
+    color: #e0e0e0;
+}
+
+#aiAdvice h1,#aiAdvice h2,#aiAdvice h3{margin:6px 0 4px;font-size:1.05em;}
+#aiAdvice p{margin:6px 0;}
+#aiAdvice ul{padding-left:18px; margin:6px 0;}
+#aiAdvice blockquote{margin:8px 0; padding:8px 10px; border-left:3px solid #cdd6e5; background:#eef2f9; border-radius:6px;}
+.dark-mode #aiAdvice blockquote{background:#171a1f;border-color:#2d313a;}
+
+.ai-table{overflow-x:auto; margin:8px 0;}
+.ai-table table{width:100%; border-collapse:collapse; font-size:13px;}
+.ai-table th,.ai-table td{border:1px solid #dbe3f3; padding:6px 8px; text-align:left;}
+.ai-table th{background:#eef2f9; font-weight:600;}
+.dark-mode .ai-table th{background:#1f232b;}
+.dark-mode .ai-table th,.dark-mode .ai-table td{border-color:#2d313a;}
 
 #recentExpenses p, #analyticsList p { padding: 6px 0; border-bottom: 1px solid #eee; margin: 0; }
 

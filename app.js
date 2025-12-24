@@ -27,7 +27,13 @@ let aiEnabled = true;
 const API_BASE = 'api.php';
 
 async function fetchJSON(url, options = {}){
-  const res = await fetch(url, options);
+  const headers = new Headers(options.headers || {});
+  const token = localStorage.getItem('token');
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const res = await fetch(url, { ...options, headers });
   const data = await res.json();
   if(!res.ok) throw new Error(data.error || res.statusText);
   return data;
@@ -363,14 +369,101 @@ document.getElementById('getAIAdviceBtn').addEventListener('click', async () => 
 
   try {
     const res = await fetchJSON(`${API_BASE}?path=ai`, { method:'POST' });
-    adviceEl.innerText = res.advice;
+    adviceEl.innerHTML = renderAdvice(res.advice);
   } catch(err){
     console.error(err);
     adviceEl.innerText = 'Failed to get AI advice.';
   }
 });
 
+function renderAdvice(text){
+  const safe = escapeHtml(String(text || ''));
+  const lines = safe.split(/\r?\n/);
+  const blocks = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].trim() === '') { i++; continue; }
+
+    // Table block
+    if (lines[i].trim().startsWith('|')) {
+      const tableLines = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      blocks.push(renderTable(tableLines));
+      continue;
+    }
+
+    // List block
+    if (/^[-*]\s/.test(lines[i].trim())) {
+      const items = [];
+      while (i < lines.length && /^[-*]\s/.test(lines[i].trim())) {
+        items.push(lines[i].trim().replace(/^[-*]\s+/, ''));
+        i++;
+      }
+      blocks.push('<ul>' + items.map(li => `<li>${inlineMarkdown(li)}</li>`).join('') + '</ul>');
+      continue;
+    }
+
+    // Heading block
+    if (/^#{1,3}\s/.test(lines[i])) {
+      const line = lines[i];
+      const level = Math.min(line.match(/^#+/)[0].length, 3);
+      const content = line.replace(/^#{1,3}\s+/, '');
+      blocks.push(`<h${level}>${inlineMarkdown(content)}</h${level}>`);
+      i++;
+      continue;
+    }
+
+    // Blockquote
+    if (lines[i].trim().startsWith('&gt;')) {
+      const quote = lines[i].trim().replace(/^&gt;\s?/, '');
+      blocks.push(`<blockquote>${inlineMarkdown(quote)}</blockquote>`);
+      i++;
+      continue;
+    }
+
+    // Paragraph
+    const para = [];
+    while (i < lines.length && lines[i].trim() !== '') {
+      para.push(lines[i]);
+      i++;
+    }
+    blocks.push(`<p>${inlineMarkdown(para.join(' '))}</p>`);
+  }
+
+  return blocks.join('\n');
+}
+
+function renderTable(lines){
+  const rows = lines.map(l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => inlineMarkdown(c.trim())));
+  if (rows.length === 0) return '';
+  const header = rows[0];
+  const body = rows.slice(2); // skip separator row
+  const thead = '<thead><tr>' + header.map(h => `<th>${h}</th>`).join('') + '</tr></thead>';
+  const tbody = '<tbody>' + body.map(r => '<tr>' + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>';
+  return `<div class="ai-table"><table>${thead}${tbody}</table></div>`;
+}
+
+function inlineMarkdown(text){
+  // bold **text** and italics *text*
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>');
+}
+
+function escapeHtml(str){
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 window.onload = () => {
+  // Guard: if not authenticated, redirect handled inside checkAuth
+  if (!checkAuth()) return;
+
   const toggleBtn = document.getElementById('themeToggle');
   toggleBtn.innerText = document.body.classList.contains('dark-mode') ? "☀️" : "🌙";
   refreshState();

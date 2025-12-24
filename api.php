@@ -6,8 +6,6 @@
 // GET  /api.php?path=state        (requires token)
 // POST /api.php?path=expense      { amount, merchant, beneficial, ts? } (requires token)
 
-require_once __DIR__ . '/ai.php';
-
 
 header('Content-Type: application/json');
 
@@ -17,6 +15,11 @@ $db_user = 'root';
 $db_pass = 'root';
 $db_name = 'expense_tracker';
 $jwt_secret = 'root';
+$cfg = [
+        'url' => "https://router.huggingface.co/v1/chat/completions",
+        'key' => "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",
+        'model' => "openai/gpt-oss-20b:groq",
+    ];
 
 // DB Connection
 $db = new mysqli($db_host, $db_user, $db_pass, $db_name);
@@ -49,13 +52,15 @@ try {
         default:
             $token = get_token();
             if (!$token) {
-                fail(401, 'Missing token');
+                error_log('Auth failed: Missing token. Headers: ' . json_encode(getallheaders()));
+                fail(401, 'Missing authorization token');
             }
 
             $user_id = verify_token($token, $jwt_secret);
     
             if (!$user_id) {
-                fail(401, 'Invalid token');
+                error_log('Auth failed: Invalid token: ' . substr($token, 0, 20) . '...');
+                fail(401, 'Invalid or expired token');
             }
 
 
@@ -77,9 +82,10 @@ try {
                     handle_prefs($db, $user_id, $method);
                     break;
                 case 'ai':
-                    handle_ai($db, $user_id);
+                    handle_ai($db, $user_id, $cfg);
+                       break;
                 case 'chatbot':
-                    handle_chatbot($method);
+                    handle_chatbot($method, $cfg);
                     break;
                 default:
                     fail(404, 'Unknown path');
@@ -387,7 +393,7 @@ function get_token(): ?string {
 
 
 
-function handle_ai(mysqli $db, int $user_id): void {
+function handle_ai(mysqli $db, int $user_id, array $cfg): void {
 
     // 1. Get real user state from DB
     $state = get_state($db, $user_id);
@@ -406,7 +412,7 @@ function handle_ai(mysqli $db, int $user_id): void {
 
     // 3. Call AI
     try {
-        $advice = call_llm($prompt);
+        $advice = call_llm($prompt, $cfg);
         respond(['ok' => true, 'advice' => $advice]);
     } catch (Throwable $e) {
         fail(500, 'AI call failed: ' . $e->getMessage());
@@ -418,6 +424,67 @@ function handle_ai(mysqli $db, int $user_id): void {
 
 
 // Utilities
+function call_llm(string $prompt, array $cfg): string {
+    $payload = [
+        'model' => $cfg['model'],
+        'messages' => [
+            ['role' => 'user', 'content' => $prompt]
+        ],
+        'max_tokens' => 400,
+        'temperature' => 0.6
+    ];
+
+    $response = null;
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $cfg['url'],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($payload),
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $cfg['key']
+            ],
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_SSL_VERIFYPEER => false
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        if ($response === false || $httpCode >= 400) {
+            $response = null;
+        }
+    }
+
+    if ($response === null) {
+        $context = stream_context_create([
+            'http' => [
+                'method'  => 'POST',
+                'header'  => [
+                    'Content-Type: application/json',
+                    'Authorization: Bearer ' . $cfg['key']
+                ],
+                'content' => json_encode($payload),
+                'timeout' => 15,
+            ]
+        ]);
+
+        $response = @file_get_contents($cfg['url'], false, $context);
+    }
+
+    $data = json_decode($response, true);
+
+    if (!$data || isset($data['error']) || !isset($data['choices'][0]['message']['content'])) {
+        error_log('AI API error or invalid response: ' . substr((string)$response, 0, 500));
+        fail(500, 'AI call failed');
+    }
+
+    return $data['choices'][0]['message']['content'];
+}
+
 function read_json(): array {
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);
@@ -437,9 +504,8 @@ function fail(int $code, string $msg): void {
 }
 
 // Chatbot Handler
-function handle_chatbot(string $method): void {
+function handle_chatbot(string $method, array $cfg): void {
     if ($method !== 'POST') fail(405, 'Method not allowed');
-    
     $body = read_json();
     $userMessage = trim($body['message'] ?? '');
     $amount = floatval($body['amount'] ?? 0);
@@ -447,10 +513,6 @@ function handle_chatbot(string $method): void {
     
     if (!$userMessage) fail(400, 'Message required');
     
-    // Call HuggingFace API
-    $aiApiUrl = 'https://router.huggingface.co/v1/chat/completions';
-    $aiApiKey = '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';
-    $aiModel = 'openai/gpt-oss-20b:groq';
     
     // Build system message to convince user not to spend on wants
     $systemMessage = "You are a financial advisor chatbot helping users make wise spending decisions. ";
@@ -461,12 +523,13 @@ function handle_chatbot(string $method): void {
     $systemMessage .= "Be supportive and not judgmental. Keep responses concise (under 150 words).";
     
     $payload = [
-        'model' => $aiModel,
+        'model' => $cfg['model'],
         'messages' => [
             ['role' => 'system', 'content' => $systemMessage],
             ['role' => 'user', 'content' => $userMessage]
         ],
-        'max_tokens' => 200,
+        // Give extra room so replies don't truncate mid-sentence
+        'max_tokens' => 400,
         'temperature' => 0.7
     ];
     
@@ -477,13 +540,13 @@ function handle_chatbot(string $method): void {
     if (function_exists('curl_init')) {
         $ch = curl_init();
         curl_setopt_array($ch, [
-            CURLOPT_URL => $aiApiUrl,
+            CURLOPT_URL => $cfg['url'],
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode($payload),
             CURLOPT_HTTPHEADER => [
                 'Content-Type: application/json',
-                'Authorization: Bearer ' . $aiApiKey
+                'Authorization: Bearer ' . $cfg['key']
             ],
             CURLOPT_TIMEOUT => 15,
             CURLOPT_SSL_VERIFYPEER => false
@@ -492,89 +555,38 @@ function handle_chatbot(string $method): void {
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
-        curl_close($ch);
         
         if ($response === false || $httpCode >= 400) {
             // curl failed or got an error status, try fallback
             $response = null;
         }
     }
-    
-    if (!$response) {
-        // Fallback to file_get_contents with better error handling
-        $options = [
+
+    if ($response === null) {
+        $context = stream_context_create([
             'http' => [
-                'method' => 'POST',
-                'header' => [
+                'method'  => 'POST',
+                'header'  => [
                     'Content-Type: application/json',
-                    'Authorization: Bearer ' . $aiApiKey
+                    'Authorization: Bearer ' . $cfg['key']
                 ],
                 'content' => json_encode($payload),
-                'timeout' => 15
-            ],
-            'ssl' => [
-                'verify_peer' => false,
-                'verify_peer_name' => false
+                'timeout' => 15,
             ]
-        ];
-        
-        $context = stream_context_create($options);
-        $response = @file_get_contents($aiApiUrl, false, $context);
-        
-        if ($response === false) {
-            // All attempts failed, use fallback response
-            error_log('Chatbot API unavailable, using fallback. CURL error: ' . ($curlError ?: 'N/A'));
-            $chatbotMessage = generateFallbackResponse($userMessage, $amount, $merchant);
-            respond(['ok' => true, 'reply' => $chatbotMessage]);
-            return;
-        }
+        ]);
+
+        $response = @file_get_contents($cfg['url'], false, $context);
     }
-    
+
     $data = json_decode($response, true);
     
     // If API response is invalid or contains errors, use fallback
     if (isset($data['error']) || !$data || !isset($data['choices'][0]['message']['content'])) {
         error_log('AI API error or invalid response: ' . substr($response, 0, 500));
-        $chatbotMessage = generateFallbackResponse($userMessage, $amount, $merchant);
-        respond(['ok' => true, 'reply' => $chatbotMessage]);
+        fail(500, 'AI call failed');
         return;
     }
     
     $chatbotMessage = $data['choices'][0]['message']['content'];
     respond(['ok' => true, 'reply' => $chatbotMessage]);
-}
-
-// Fallback chatbot responses when API is unavailable
-function generateFallbackResponse(string $userMessage, float $amount, string $merchant): string {
-    $responses = [
-        // Questions about why they want it
-        'why' => "I understand! But let me ask - will this purchase still bring you joy in a month? Sometimes we think we need something, but our needs change quickly. What's the main thing you're hoping to get from this {$merchant} purchase?",
-        
-        'need' => "That sounds important! But since this is a Want category, let me help you think it through. Do you already have something that does the same thing? Sometimes we buy duplicates without realizing it.",
-        
-        'money' => "Budget awareness is great! Here's a thought though - if you wait just one week, you might realize you don't actually need this anymore. Many wants fade quickly. How would you feel waiting a week to decide?",
-        
-        'save' => "That's a fantastic savings mindset! Every little bit counts. {$amount} EGP today could be {$amount} EGP towards your bigger goals tomorrow. What's something more important you'd rather save for?",
-        
-        'friend' => "Friends can be great influencers, but this is your wallet! You might feel better keeping your {$amount} EGP. What would YOUR ideal choice be if nobody was watching?",
-        
-        'default' => "I hear you! Let me ask something different - what would happen if you DON'T buy this today? Would you really miss it? Sometimes the answer to that question tells us a lot about whether it's truly worth it."
-    ];
-    
-    // Detect the topic from user message
-    $lowerMessage = strtolower($userMessage);
-    
-    if (strpos($lowerMessage, 'why') !== false || strpos($lowerMessage, 'because') !== false || strpos($lowerMessage, 'need') !== false) {
-        return $responses['why'];
-    } elseif (strpos($lowerMessage, 'have') !== false || strpos($lowerMessage, 'already') !== false) {
-        return $responses['need'];
-    } elseif (strpos($lowerMessage, 'money') !== false || strpos($lowerMessage, 'afford') !== false) {
-        return $responses['money'];
-    } elseif (strpos($lowerMessage, 'sav') !== false || strpos($lowerMessage, 'goal') !== false) {
-        return $responses['save'];
-    } elseif (strpos($lowerMessage, 'friend') !== false || strpos($lowerMessage, 'everyone') !== false) {
-        return $responses['friend'];
-    } else {
-        return $responses['default'];
-    }
 }

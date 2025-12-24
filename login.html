@@ -141,11 +141,20 @@
       }
 
       window.onload = () => {
+        // Clear any stale tokens on login page load (optional, remove if not needed)
+        // localStorage.clear();
+        
         const token = localStorage.getItem('token');
         if (token) {
           window.location.href = 'index.html';
         }
       };
+      
+      // Helper function to clear localStorage (for debugging)
+      function clearStorage() {
+        localStorage.clear();
+        alert('Storage cleared! Please refresh the page.');
+      }
   </script>
 </body>
 </html>
