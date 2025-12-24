@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Expense Tracker - Login</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="../js/api.js"></script>
+  <script src="../js/auth.js"></script>
 </head>
 <body>
   <div class="content" style="display: flex; align-items: center; justify-content: center; min-height: 100vh;">
@@ -43,8 +45,6 @@
   </div>
 
   <script>
-      const API_BASE = 'api.php';
-
       async function login() {
         const email = document.getElementById('loginEmail').value.trim();
         const password = document.getElementById('loginPassword').value;
@@ -56,24 +56,12 @@
         }
 
         try {
-          const res = await fetch(`${API_BASE}?path=auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-          });
-          const data = await res.json();
-
-          if (!res.ok) {
-            showError(data.error || 'Login failed');
-            return;
-          }
-
-          localStorage.setItem('token', data.token);
-          localStorage.setItem('user_id', data.user_id);
+          const data = await API.login(email, password);
+          Auth.saveAuth(data.token, data.user_id);
           window.location.href = 'index.html';
         } catch (err) {
           console.error(err);
-          showError('Network error. Try again.');
+          showError(err.message || 'Login failed');
         }
       }
 
@@ -81,7 +69,6 @@
         const email = document.getElementById('regEmail').value.trim();
         const password = document.getElementById('regPassword').value;
         const confirm = document.getElementById('regPasswordConfirm').value;
-        const errorEl = document.getElementById('errorMsg');
 
         if (!email || !password || !confirm) {
           showError('All fields required');
@@ -99,24 +86,12 @@
         }
 
         try {
-          const res = await fetch(`${API_BASE}?path=auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-          });
-          const data = await res.json();
-
-          if (!res.ok) {
-            showError(data.error || 'Registration failed');
-            return;
-          }
-
-          localStorage.setItem('token', data.token);
-          localStorage.setItem('user_id', data.user_id);
+          const data = await API.register(email, password);
+          Auth.saveAuth(data.token, data.user_id);
           window.location.href = 'index.html';
         } catch (err) {
           console.error(err);
-          showError('Network error. Try again.');
+          showError(err.message || 'Registration failed');
         }
       }
 
@@ -141,16 +116,12 @@
       }
 
       window.onload = () => {
-        // Clear any stale tokens on login page load (optional, remove if not needed)
-        // localStorage.clear();
-        
-        const token = localStorage.getItem('token');
+        const token = Auth.getToken();
         if (token) {
           window.location.href = 'index.html';
         }
       };
       
-      // Helper function to clear localStorage (for debugging)
       function clearStorage() {
         localStorage.clear();
         alert('Storage cleared! Please refresh the page.');
