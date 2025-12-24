@@ -148,10 +148,12 @@
         </div>
 
         <div class="card" style="margin-top:16px;">
-          <h3>AI Advice</h3>
+          <div id="aispace">
+            <h3>AI Advice</h3>
+            <button class="primary" id="getAIAdviceBtn">Get AI Advice</button>
+          </div>
           <div id="aiAdvice">Enable AI in Profile.</div>
         </div>
-        
       </div>
     </div>
   </div>
@@ -161,7 +163,6 @@
     <button onclick="showPage('analytics')">Analytics</button>
     <button onclick="showPage('profile')">Profile</button>
     <button id="themeToggle" onclick="toggleTheme()">🌙</button>
-    <button onclick="logout()" style="margin-left: auto; background: #dc3545;">Logout</button>
   </div>
 
   <!-- Confirmation Modal -->

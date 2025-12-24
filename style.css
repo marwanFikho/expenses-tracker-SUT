@@ -167,6 +167,25 @@ button.primary {
 }
 button.primary:hover { background: #0056b3; transform: translateY(-2px); }
 
+
+.card #aispace{
+    display: flex;
+    justify-content: space-between;
+}
+
+.card #aispace .primary{
+    width: 15%;
+    padding: 12px;
+    background: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.3s, transform 0.2s;
+}
+
 #recentExpenses p, #analyticsList p { padding: 6px 0; border-bottom: 1px solid #eee; margin: 0; }
 
 .dark-mode { background: #121212; color: #e0e0e0; }
@@ -456,3 +475,9 @@ button.primary:hover { background: #0056b3; transform: translateY(-2px); }
 }
 .edit-btn { background: #ffc107; color: #fff; }
 .delete-btn { background: #dc3545; color: #fff; }
+
+
+.form{
+    display: flex;
+    flex-direction: column;
+}
