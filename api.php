@@ -78,6 +78,8 @@ try {
                     break;
                 case 'ai':
                     handle_ai($db, $user_id);
+                case 'chatbot':
+                    handle_chatbot($method);
                     break;
                 default:
                     fail(404, 'Unknown path');
@@ -433,4 +435,146 @@ function fail(int $code, string $msg): void {
     echo json_encode(['error' => $msg]);
     exit;
 }
-?>
+
+// Chatbot Handler
+function handle_chatbot(string $method): void {
+    if ($method !== 'POST') fail(405, 'Method not allowed');
+    
+    $body = read_json();
+    $userMessage = trim($body['message'] ?? '');
+    $amount = floatval($body['amount'] ?? 0);
+    $merchant = trim($body['merchant'] ?? '');
+    
+    if (!$userMessage) fail(400, 'Message required');
+    
+    // Call HuggingFace API
+    $aiApiUrl = 'https://router.huggingface.co/v1/chat/completions';
+    $aiApiKey = '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';
+    $aiModel = 'openai/gpt-oss-20b:groq';
+    
+    // Build system message to convince user not to spend on wants
+    $systemMessage = "You are a financial advisor chatbot helping users make wise spending decisions. ";
+    $systemMessage .= "The user is about to spend {$amount} EGP at {$merchant}. ";
+    $systemMessage .= "This is classified as a 'WANT' (non-essential purchase). ";
+    $systemMessage .= "Your goal is to politely and empathetically convince them to reconsider this purchase. ";
+    $systemMessage .= "Ask questions about their financial goals, suggest alternatives, or remind them of their savings goals. ";
+    $systemMessage .= "Be supportive and not judgmental. Keep responses concise (under 150 words).";
+    
+    $payload = [
+        'model' => $aiModel,
+        'messages' => [
+            ['role' => 'system', 'content' => $systemMessage],
+            ['role' => 'user', 'content' => $userMessage]
+        ],
+        'max_tokens' => 200,
+        'temperature' => 0.7
+    ];
+    
+    // Try using curl first, then fall back to file_get_contents
+    $response = null;
+    $curlError = null;
+    
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $aiApiUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($payload),
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $aiApiKey
+            ],
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_SSL_VERIFYPEER => false
+        ]);
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        
+        if ($response === false || $httpCode >= 400) {
+            // curl failed or got an error status, try fallback
+            $response = null;
+        }
+    }
+    
+    if (!$response) {
+        // Fallback to file_get_contents with better error handling
+        $options = [
+            'http' => [
+                'method' => 'POST',
+                'header' => [
+                    'Content-Type: application/json',
+                    'Authorization: Bearer ' . $aiApiKey
+                ],
+                'content' => json_encode($payload),
+                'timeout' => 15
+            ],
+            'ssl' => [
+                'verify_peer' => false,
+                'verify_peer_name' => false
+            ]
+        ];
+        
+        $context = stream_context_create($options);
+        $response = @file_get_contents($aiApiUrl, false, $context);
+        
+        if ($response === false) {
+            // All attempts failed, use fallback response
+            error_log('Chatbot API unavailable, using fallback. CURL error: ' . ($curlError ?: 'N/A'));
+            $chatbotMessage = generateFallbackResponse($userMessage, $amount, $merchant);
+            respond(['ok' => true, 'reply' => $chatbotMessage]);
+            return;
+        }
+    }
+    
+    $data = json_decode($response, true);
+    
+    // If API response is invalid or contains errors, use fallback
+    if (isset($data['error']) || !$data || !isset($data['choices'][0]['message']['content'])) {
+        error_log('AI API error or invalid response: ' . substr($response, 0, 500));
+        $chatbotMessage = generateFallbackResponse($userMessage, $amount, $merchant);
+        respond(['ok' => true, 'reply' => $chatbotMessage]);
+        return;
+    }
+    
+    $chatbotMessage = $data['choices'][0]['message']['content'];
+    respond(['ok' => true, 'reply' => $chatbotMessage]);
+}
+
+// Fallback chatbot responses when API is unavailable
+function generateFallbackResponse(string $userMessage, float $amount, string $merchant): string {
+    $responses = [
+        // Questions about why they want it
+        'why' => "I understand! But let me ask - will this purchase still bring you joy in a month? Sometimes we think we need something, but our needs change quickly. What's the main thing you're hoping to get from this {$merchant} purchase?",
+        
+        'need' => "That sounds important! But since this is a Want category, let me help you think it through. Do you already have something that does the same thing? Sometimes we buy duplicates without realizing it.",
+        
+        'money' => "Budget awareness is great! Here's a thought though - if you wait just one week, you might realize you don't actually need this anymore. Many wants fade quickly. How would you feel waiting a week to decide?",
+        
+        'save' => "That's a fantastic savings mindset! Every little bit counts. {$amount} EGP today could be {$amount} EGP towards your bigger goals tomorrow. What's something more important you'd rather save for?",
+        
+        'friend' => "Friends can be great influencers, but this is your wallet! You might feel better keeping your {$amount} EGP. What would YOUR ideal choice be if nobody was watching?",
+        
+        'default' => "I hear you! Let me ask something different - what would happen if you DON'T buy this today? Would you really miss it? Sometimes the answer to that question tells us a lot about whether it's truly worth it."
+    ];
+    
+    // Detect the topic from user message
+    $lowerMessage = strtolower($userMessage);
+    
+    if (strpos($lowerMessage, 'why') !== false || strpos($lowerMessage, 'because') !== false || strpos($lowerMessage, 'need') !== false) {
+        return $responses['why'];
+    } elseif (strpos($lowerMessage, 'have') !== false || strpos($lowerMessage, 'already') !== false) {
+        return $responses['need'];
+    } elseif (strpos($lowerMessage, 'money') !== false || strpos($lowerMessage, 'afford') !== false) {
+        return $responses['money'];
+    } elseif (strpos($lowerMessage, 'sav') !== false || strpos($lowerMessage, 'goal') !== false) {
+        return $responses['save'];
+    } elseif (strpos($lowerMessage, 'friend') !== false || strpos($lowerMessage, 'everyone') !== false) {
+        return $responses['friend'];
+    } else {
+        return $responses['default'];
+    }
+}

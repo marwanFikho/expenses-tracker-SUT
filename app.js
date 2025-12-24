@@ -129,9 +129,18 @@ function startExpenseFlow(){
   const crossingWeek = (weekSpent + amount) > caps.week;
   const crossingMonth = (monthSpent + amount) > caps.month;
   const advice = (needWant==='need')
-    ? (crossingWeek || crossingMonth ? 'It’s a need, but you may exceed your cap soon.' : 'Looks reasonable for a need.')
-    : (crossingWeek || crossingMonth ? 'This is a want and may exceed your cap. Consider skipping.' : 'It’s a want; ensure it fits your budget.');
-  habitSummary.innerHTML += `<br/><i>${advice}</i>`;
+    ? (crossingWeek || crossingMonth ? "It's a need, but you may exceed your cap soon." : "Looks reasonable for a need.")
+    : (crossingWeek || crossingMonth ? "This is a want and may exceed your cap. Consider skipping." : "It's a want; ensure it fits your budget.");
+    habitSummary.innerHTML += `<br/><i>${advice}</i>`;
+
+  // Show/hide chatbot based on need/want selection
+  updateChatbotVisibility(needWant);
+
+  // Update chatbot when selection changes
+  needWantSelect.addEventListener('change', (e) => {
+    updateChatbotVisibility(e.target.value);
+    clearChatMessages();
+  });
 
   modal.classList.add('show');
   modal.setAttribute('aria-hidden','false');
@@ -472,4 +481,89 @@ function showToast(message){
   el.textContent = message;
   document.body.appendChild(el);
   setTimeout(()=> el.remove(), 2800);
+}
+
+// Chatbot Functions
+function updateChatbotVisibility(needWant) {
+  const chatbotSection = document.getElementById('chatbotSection');
+  if (needWant === 'want') {
+    chatbotSection.style.display = 'block';
+  } else {
+    chatbotSection.style.display = 'none';
+  }
+}
+
+function clearChatMessages() {
+  const chatMessages = document.getElementById('chatMessages');
+  chatMessages.innerHTML = `
+    <div class="chat-message ai-message">
+      <p>Hi! I noticed this is a <strong>Want</strong> category purchase. Before you spend, let me help you think this through. What's your main reason for this purchase?</p>
+    </div>
+  `;
+  document.getElementById('chatInput').value = '';
+}
+
+function sendChatMessage() {
+  const chatInput = document.getElementById('chatInput');
+  const userMessage = chatInput.value.trim();
+  
+  if (!userMessage) return;
+  
+  // Add user message to chat
+  const chatMessages = document.getElementById('chatMessages');
+  const userMsgEl = document.createElement('div');
+  userMsgEl.className = 'chat-message user-message';
+  userMsgEl.innerHTML = `<p>${userMessage}</p>`;
+  chatMessages.appendChild(userMsgEl);
+  
+  // Clear input and add loading indicator
+  chatInput.value = '';
+  const loadingEl = document.createElement('div');
+  loadingEl.className = 'chat-message ai-message chat-loading';
+  loadingEl.innerHTML = '<p>💭 Thinking...</p>';
+  chatMessages.appendChild(loadingEl);
+  
+  // Scroll to bottom
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  
+  // Disable send button
+  const sendBtn = document.querySelector('.chat-send-btn');
+  sendBtn.disabled = true;
+  
+  // Call chatbot API
+  (async () => {
+    try {
+      const response = await fetchJSON(`${API_BASE}?path=chatbot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMessage,
+          amount: pendingExpense?.amount || 0,
+          merchant: pendingExpense?.merchant || ''
+        })
+      });
+      
+      // Remove loading indicator
+      loadingEl.remove();
+      
+      // Add AI response
+      const aiMsgEl = document.createElement('div');
+      aiMsgEl.className = 'chat-message ai-message';
+      aiMsgEl.innerHTML = `<p>${response.reply}</p>`;
+      chatMessages.appendChild(aiMsgEl);
+      
+      // Scroll to bottom
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    } catch (err) {
+      console.error(err);
+      loadingEl.remove();
+      
+      const errorEl = document.createElement('div');
+      errorEl.className = 'chat-message ai-message';
+      errorEl.innerHTML = '<p>Sorry, I had trouble responding. Please try again.</p>';
+      chatMessages.appendChild(errorEl);
+    } finally {
+      sendBtn.disabled = false;
+    }
+  })();
 }
