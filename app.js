@@ -281,7 +281,7 @@ function savePreferences(){
   })();
 }
 
-function updateAnalytics(){
+async function updateAnalytics(){
   const totalDay = expenses.reduce((s,e)=>s+e.amount,0);
   const totalWeek = totalDay;
   const totalMonth = totalDay;
@@ -295,13 +295,8 @@ function updateAnalytics(){
   const prediction = totalMonth * 1.15;
   document.getElementById('trendPrediction').innerText =
     `Expected Next Month: ${prediction.toFixed(2)} EGP`;
-
-  document.getElementById('aiAdvice').innerText = aiEnabled
-    ? (prediction > caps.month
-        ? 'Your spending is increasing. Reduce non-essential expenses.'
-        : 'Your spending is under control. Keep going!')
-    : 'Enable AI to get advice.';
 }
+
 
 setInterval(updateAnalytics, 500);
 
@@ -341,6 +336,25 @@ function toggleTheme() {
     setTimeout(() => ripple.remove(), 120);
   }, 200); // slightly slower ripple timing to match CSS
 }
+
+document.getElementById('getAIAdviceBtn').addEventListener('click', async () => {
+  if(!aiEnabled){
+    showToast('Enable AI in Profile first.');
+    return;
+  }
+
+  const adviceEl = document.getElementById('aiAdvice');
+  adviceEl.innerText = 'Fetching AI advice…';
+
+  try {
+    const res = await fetchJSON(`${API_BASE}?path=ai`, { method:'POST' });
+    adviceEl.innerText = res.advice;
+  } catch(err){
+    console.error(err);
+    adviceEl.innerText = 'Failed to get AI advice.';
+  }
+});
+
 
 window.onload = () => {
   const toggleBtn = document.getElementById('themeToggle');
