@@ -187,6 +187,30 @@
         <p id="usageSummary">Usage: Weekly — <span id="weeklySpent">0</span> | Monthly — <span id="monthlySpent">0</span></p>
       </div>
 
+      <!-- Chatbot Section (shows only for wants) -->
+      <div id="chatbotSection" class="modal-section chatbot-container" style="display: none;">
+        <div class="chatbot-header">
+          <h4>💬 Smart Spending Advisor</h4>
+          <p class="chatbot-subtitle">Let's reconsider this purchase</p>
+        </div>
+        
+        <div id="chatMessages" class="chat-messages">
+          <div class="chat-message ai-message">
+            <p>Hi! I noticed this is a <strong>Want</strong> category purchase. Before you spend, let me help you think this through. What's your main reason for this purchase?</p>
+          </div>
+        </div>
+
+        <div class="chat-input-group">
+          <input 
+            id="chatInput" 
+            type="text" 
+            placeholder="Type your response..." 
+            onkeypress="if(event.key==='Enter') sendChatMessage()"
+          />
+          <button class="chat-send-btn" onclick="sendChatMessage()">Send</button>
+        </div>
+      </div>
+
       <div class="modal-actions">
         <button class="secondary" onclick="cancelExpenseFlow()">Cancel</button>
         <button class="primary" onclick="confirmExpenseFlow()">Confirm & Add</button>

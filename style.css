@@ -249,6 +249,134 @@ button.primary:hover { background: #0056b3; transform: translateY(-2px); }
     cursor: pointer;
 }
 
+/* Chatbot Styles */
+.chatbot-container {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 16px 0;
+}
+.dark-mode .chatbot-container {
+    background: #2a2a2a;
+}
+
+.chatbot-header {
+    margin-bottom: 12px;
+}
+.chatbot-header h4 {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+    color: #007bff;
+}
+.dark-mode .chatbot-header h4 {
+    color: #4db8ff;
+}
+
+.chatbot-subtitle {
+    margin: 0;
+    font-size: 12px;
+    color: #666;
+}
+.dark-mode .chatbot-subtitle {
+    color: #aaa;
+}
+
+.chat-messages {
+    background: #fff;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+}
+.dark-mode .chat-messages {
+    background: #1e1e1e;
+    border-color: #444;
+}
+
+.chat-message {
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.ai-message {
+    background: #e3f2fd;
+    color: #0d47a1;
+    margin-right: 30px;
+}
+.dark-mode .ai-message {
+    background: #1a3a52;
+    color: #90caf9;
+}
+
+.user-message {
+    background: #c8e6c9;
+    color: #1b5e20;
+    margin-left: 30px;
+    text-align: right;
+}
+.dark-mode .user-message {
+    background: #1b5e20;
+    color: #81c784;
+}
+
+.chat-input-group {
+    display: flex;
+    gap: 8px;
+}
+.chat-input-group input {
+    flex: 1;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+}
+.dark-mode .chat-input-group input {
+    background: #222;
+    color: #fff;
+    border-color: #555;
+}
+
+.chat-send-btn {
+    padding: 10px 16px;
+    background: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.3s;
+}
+.chat-send-btn:hover {
+    background: #0056b3;
+}
+.dark-mode .chat-send-btn {
+    background: #0056b3;
+}
+.dark-mode .chat-send-btn:hover {
+    background: #0040a0;
+}
+
+.chat-send-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.chat-loading {
+    display: inline-block;
+    font-style: italic;
+    color: #999;
+}
+.dark-mode .chat-loading {
+    color: #666;
+}
+
 
 /* Toast notifications */
 .toast {
