@@ -48,8 +48,6 @@ $method = $_SERVER['REQUEST_METHOD'];
 $path = $_GET['path'] ?? '';
 
 try {
-    $db = get_db();
-    ensure_schema($db);
     if ($method === 'OPTIONS') {
         http_response_code(204);
         exit;
