@@ -1,9 +1,5 @@
 <?php
 
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 // Endpoints:
 // POST /api.php?path=auth/register { email, password }
 // POST /api.php?path=auth/login    { email, password }
@@ -30,6 +26,7 @@ if ($db->connect_error) {
 }
 $db->set_charset('utf8mb4');
 
+
 // Router
 $method = $_SERVER['REQUEST_METHOD'];
 $path = $_GET['path'] ?? '';
@@ -52,8 +49,16 @@ try {
             break;
         default:
             $token = get_token();
+            if (!$token) {
+                fail(401, 'Missing token');
+            }
+
             $user_id = verify_token($token, $jwt_secret);
-            if (!$user_id) fail(401, 'Unauthorized');
+    
+            if (!$user_id) {
+                fail(401, 'Invalid token');
+            }
+
 
             switch ($path) {
                 case 'state':
@@ -379,7 +384,7 @@ function get_token(): ?string {
 
 
 function handle_ai(mysqli $db, int $user_id): void {
-    
+
     // 1. Get real user state from DB
     $state = get_state($db, $user_id);
 
@@ -400,7 +405,7 @@ function handle_ai(mysqli $db, int $user_id): void {
         $advice = call_llm($prompt);
         respond(['ok' => true, 'advice' => $advice]);
     } catch (Throwable $e) {
-        fail(500, 'AI call failed');
+        fail(500, 'AI call failed: ' . $e->getMessage());
     }
 }
 
@@ -426,3 +431,4 @@ function fail(int $code, string $msg): void {
     echo json_encode(['error' => $msg]);
     exit;
 }
+?>
