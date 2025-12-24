@@ -1,3 +1,18 @@
+function checkAuth() {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    window.location.href = 'login.html';
+    return false;
+  }
+  return true;
+}
+
+function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user_id');
+  window.location.href = 'login.html';
+}
+
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -81,7 +96,6 @@ function renderIncome(){
   });
 }
 
-// Deprecated direct add: route to confirmation flow
 function addExpense(){ startExpenseFlow(); }
 
 // Flow: ask for confirmation (need/want, show habits & caps) before adding expense
@@ -91,10 +105,8 @@ function startExpenseFlow(){
   const merchant = document.getElementById('merchant').value.trim();
   if(!(amount > 0) || !merchant){ alert('Enter amount (>0) and merchant/place'); return; }
 
-  // Prepare pending expense, do not deduct yet
   pendingExpense = { amount, merchant, beneficial: 0, ts: Date.now() };
-
-  // Populate modal data
+  
   const modal = document.getElementById('confirmModal');
   const needWantSelect = document.getElementById('needWantSelect');
   needWantSelect.value = 'want';
@@ -121,7 +133,6 @@ function startExpenseFlow(){
     : (crossingWeek || crossingMonth ? 'This is a want and may exceed your cap. Consider skipping.' : 'It’s a want; ensure it fits your budget.');
   habitSummary.innerHTML += `<br/><i>${advice}</i>`;
 
-  // Show modal
   modal.classList.add('show');
   modal.setAttribute('aria-hidden','false');
 }
@@ -136,10 +147,10 @@ function cancelExpenseFlow(){
 function confirmExpenseFlow(){
   if(!pendingExpense) return cancelExpenseFlow();
   const needWant = document.getElementById('needWantSelect').value;
-  // Map need/want to beneficial flag
+  
   pendingExpense.beneficial = (needWant === 'need') ? 1 : 0;
 
-  // Save to backend
+  // Save to Database
   (async()=>{
     try {
       await fetchJSON(`${API_BASE}?path=expense`, {
@@ -306,35 +317,30 @@ function toggleTheme() {
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
 
-  // Determine target theme
   const goingDark = !document.body.classList.contains('dark-mode');
   const targetColor = goingDark ? '#121212' : '#f0f2f5';
 
-  // Create ripple overlay originating from the button (beneath content)
   const ripple = document.createElement('div');
   ripple.className = 'theme-ripple';
   ripple.style.background = targetColor;
   ripple.style.left = `${cx}px`;
   ripple.style.top = `${cy}px`;
 
-  // Size ripple so that scaling to 1 covers the viewport
   const maxDim = Math.hypot(window.innerWidth, window.innerHeight);
-  const diameter = maxDim * 2; // enough to cover diagonals
+  const diameter = maxDim * 2;
   ripple.style.width = `${diameter}px`;
   ripple.style.height = `${diameter}px`;
 
-  // Append ripple to background container and toggle theme immediately
   const bgLayer = document.getElementById('bg-ripple') || document.body;
   bgLayer.appendChild(ripple);
   document.body.classList.toggle('dark-mode');
   toggleBtn.innerText = document.body.classList.contains('dark-mode') ? "☀️" : "🌙";
 
-  // Quickly fade out the ripple to avoid perceived white (or dark) hold
   setTimeout(() => {
     ripple.style.transition = 'opacity 120ms ease';
     ripple.style.opacity = '0';
     setTimeout(() => ripple.remove(), 120);
-  }, 200); // slightly slower ripple timing to match CSS
+  }, 200);
 }
 
 document.getElementById('getAIAdviceBtn').addEventListener('click', async () => {
@@ -354,7 +360,6 @@ document.getElementById('getAIAdviceBtn').addEventListener('click', async () => 
     adviceEl.innerText = 'Failed to get AI advice.';
   }
 });
-
 
 window.onload = () => {
   const toggleBtn = document.getElementById('themeToggle');
@@ -419,9 +424,7 @@ function renderIncomeChart(){
   });
 }
 
-// --------------------
 // Effects & Utilities
-// --------------------
 
 function triggerConfetti(){
   if(typeof confetti !== 'function') return;

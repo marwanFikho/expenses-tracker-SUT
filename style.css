@@ -15,7 +15,6 @@ body {
 
 .content { flex: 1; padding: 20px; position: relative; z-index: 1; }
 
-/* Page container & header */
 .container {
     max-width: 1100px;
     margin: 0 auto;
@@ -57,14 +56,14 @@ body {
     .grid-2, .grid-3 { grid-template-columns: 1fr; }
 }
 
-/* Analytics mobile responsiveness and performance */
+
 .card canvas {
     width: 100% !important;
     height: 260px !important;
     display: block;
 }
 
-/* Make long lists scrollable to avoid huge pages on mobile */
+
 #analyticsList, #incomeAnalyticsList {
     max-height: 320px;
     overflow-y: auto;
@@ -85,10 +84,6 @@ body {
     #analyticsList, #incomeAnalyticsList { max-height: 260px; }
 }
 
-/* Avoid unnecessary repaint hints */
-.card { will-change: auto; }
-
-/* Card polish */
 .card h3 { display: flex; align-items: center; justify-content: space-between; }
 .card .section-note { color: #666; font-size: 13px; }
 .dark-mode .card .section-note { color: #aaa; }
@@ -106,13 +101,13 @@ body {
     justify-content: center;
     align-items: center;
     box-shadow: 0 -2px 6px rgba(0,0,0,0.2);
-    flex-wrap: nowrap; /* keep horizontal */
+    flex-wrap: nowrap;
     position: sticky;
     bottom: 0;
     width: 100%;
     z-index: 2;
     transition: background 150ms ease, color 150ms ease;
-    overflow-x: auto; /* allow horizontal scroll on small screens */
+    overflow-x: auto;
 }
 
 .nav button {
@@ -124,7 +119,7 @@ body {
     border-radius: 8px;
     font-weight: 500;
     transition: background 0.3s, transform 0.2s;
-    flex: 0 0 auto; /* prevent buttons from stacking */
+    flex: 0 0 auto;
 }
 
 .nav button:hover { background: #2ea44f; transform: translateY(-2px); }
@@ -209,8 +204,8 @@ button.primary:hover { background: #0056b3; transform: translateY(-2px); }
     transform: translate(-50%, -50%) scale(0);
     transform-origin: center;
     pointer-events: none;
-    z-index: 0; /* beneath content */
-    background: #121212; /* target theme background */
+    z-index: 0;
+    background: #121212;
     will-change: transform, opacity;
     animation: ripple-scale 1s ease-out forwards;
 }
@@ -226,14 +221,14 @@ button.primary:hover { background: #0056b3; transform: translateY(-2px); }
     position: fixed;
     inset: 0;
     pointer-events: none;
-    z-index: 1000; /* effects layer */
+    z-index: 1000;
 }
 
 /* Background ripple container */
 #bg-ripple {
     position: fixed;
     inset: 0;
-    z-index: 0; /* under content */
+    z-index: 0;
     pointer-events: none;
 }
 
@@ -245,7 +240,7 @@ button.primary:hover { background: #0056b3; transform: translateY(-2px); }
     display: none;
     align-items: center;
     justify-content: center;
-    z-index: 2000; /* above content and effects */
+    z-index: 2000;
     pointer-events: auto;
 }
 .modal.show { display: flex; }
@@ -288,14 +283,13 @@ button.primary:hover { background: #0056b3; transform: translateY(-2px); }
     animation: toast-in 0.2s ease forwards, toast-out 0.3s ease 2.2s forwards;
     max-width: 90%;
     text-align: center;
-    z-index: 2500; /* above content and nav */
-    pointer-events: none; /* allow clicks to pass through */
+    z-index: 2500;
+    pointer-events: none;
 }
 
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @keyframes toast-out { to { opacity: 0; transform: translate(-50%, 10px); } }
 
-/* Sad mode (temporary) */
 .sad-mode {
     filter: grayscale(0.8) saturate(0.8);
     transition: filter 0.4s ease;
