@@ -70,5 +70,4 @@ function call_llm(string $prompt): ?string
     }
 
     return $data['choices'][0]['message']['content'];
-
 }
