@@ -1,20 +1,36 @@
 <?php
-// ai.php — Hugging Face Inference API client
-
 $GLOBALS['LLM_LAST_ERROR'] = null;
+
+require_once __DIR__ . '/vendor/autoload.php';
+
+use Dotenv\Dotenv;
+
+$dotenv = Dotenv::createImmutable(__DIR__);
+$dotenv->load();
 
 function ai_config(): array {
     static $cfg = null;
     if ($cfg !== null) return $cfg;
 
+    $url = trim($_ENV['AI_API_URL'] ?? '');
+    $key = trim($_ENV['AI_API_KEY'] ?? '');
+    $model = trim($_ENV['AI_MODEL'] ?? 'openai/gpt-oss-20b:groq');
+
+    if ($url === '') $url = 'https://router.huggingface.co/v1/chat/completions';
+
     $cfg = [
-        'url'   => 'https://router.huggingface.co/v1/chat/completions',
-        'key'   => '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',
-        'model' => 'openai/gpt-oss-20b:groq',
+        'url' => $url,
+        'key' => $key,
+        'model' => $model,
     ];
 
     return $cfg;
 }
+
+
+
+var_dump(getenv('AI_API_KEY'));
+var_dump($_ENV['AI_API_KEY'] ?? null);
 
 function call_llm(string $prompt): ?string
 {
@@ -28,13 +44,12 @@ function call_llm(string $prompt): ?string
     }
 
     $payload = [
-        "model" => $cfg['model'],   // e.g., "openai/gpt-oss-20b:groq"
+        "model" => $cfg['model'],
         "messages" => [
             ["role" => "user", "content" => $prompt]
         ],
         "stream" => false
     ];
-
 
     $ch = curl_init($cfg['url']);
     curl_setopt_array($ch, [
@@ -51,7 +66,6 @@ function call_llm(string $prompt): ?string
     $res = curl_exec($ch);
     $err = curl_error($ch);
     $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
 
     if ($res === false) {
         $GLOBALS['LLM_LAST_ERROR'] = $err;

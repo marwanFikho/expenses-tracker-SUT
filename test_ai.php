@@ -19,6 +19,9 @@ $prompt = "You are a financial assistant. The user’s wallet balance is {$state
           "Incomes: ".json_encode($state['incomes']).". ".
           "Give practical advice on how they can manage their money better, if not enough data say so.";
 
+$cfg = ai_config();
+var_dump($cfg);
+
 $response = call_llm($prompt);
 
 if ($response === null) {

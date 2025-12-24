@@ -1,5 +1,4 @@
 <?php
-
 // Endpoints:
 // POST /api.php?path=auth/register { email, password }
 // POST /api.php?path=auth/login    { email, password }
@@ -370,17 +369,20 @@ function verify_token(string $token, string $secret): ?int {
     return $payload_decoded['user_id'] ?? null;
 }
 
+
 function get_token(): ?string {
-    $headers = getallheaders();
-    foreach ($headers as $key => $value) {
-        if (strtolower($key) === 'authorization') {
-            if (preg_match('/Bearer\s+(.+)/', $value, $m)) {
-                return $m[1];
-            }
-        }
+    $auth = $_SERVER['HTTP_AUTHORIZATION'] 
+         ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] 
+         ?? null;
+
+    if ($auth && preg_match('/Bearer\s+(.+)/', $auth, $m)) {
+        return $m[1];
     }
+
+    // fallback: allow token via GET for testing
     return $_GET['token'] ?? null;
 }
+
 
 
 function handle_ai(mysqli $db, int $user_id): void {

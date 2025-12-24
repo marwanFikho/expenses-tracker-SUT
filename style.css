@@ -167,12 +167,13 @@ button.primary {
 }
 button.primary:hover { background: #0056b3; transform: translateY(-2px); }
 
-.card div{
+
+.card #aispace{
     display: flex;
     justify-content: space-between;
 }
 
-.card div .primary{
+.card #aispace .primary{
     width: 15%;
     padding: 12px;
     background: #007bff;
@@ -346,3 +347,9 @@ button.primary:hover { background: #0056b3; transform: translateY(-2px); }
 }
 .edit-btn { background: #ffc107; color: #fff; }
 .delete-btn { background: #dc3545; color: #fff; }
+
+
+.form{
+    display: flex;
+    flex-direction: column;
+}
