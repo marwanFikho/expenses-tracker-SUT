@@ -1,131 +1,151 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Expense Tracker - Login</title>
-  <link rel="stylesheet" href="style.css" />
-  <script src="../js/api.js"></script>
-  <script src="../js/auth.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Expense Tracker</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="content" style="display: flex; align-items: center; justify-content: center; min-height: 100vh;">
     <div class="auth-container">
-      <div class="card" style="max-width: 400px; width: 100%;">
-        <h1 style="text-align: center; margin-bottom: 24px;">Expense Tracker</h1>
+        <div class="auth-card">
+            <h1>Expense Tracker</h1>
+            <p class="subtitle">Manage your finances smartly</p>
+            
+            <!-- Login Form -->
+            <div id="loginForm" class="auth-form">
+                <h2>Welcome Back</h2>
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="login-email">Email</label>
+                        <input type="email" id="login-email" name="email" required placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" name="password" required placeholder="••••••••">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </form>
+                <p class="switch-form">Don't have an account? <a href="#" id="showRegister">Register here</a></p>
+            </div>
 
-        <div id="authMode" class="auth-mode-login form">
-          <!-- Login form -->
-          <div id="loginForm">
-            <h2>Login</h2>
-            <input id="loginEmail" type="email" placeholder="Email" />
-            <input id="loginPassword" type="password" placeholder="Password" />
-            <button class="primary" onclick="login()" style="width: 100%;">Login</button>
-            <p style="text-align: center; margin-top: 16px;">
-              Don't have an account? <a href="#" onclick="switchToRegister(event)">Register</a>
-            </p>
-          </div>
+            <!-- Register Form -->
+            <div id="registerForm" class="auth-form" style="display: none;">
+                <h2>Create Account</h2>
+                <form id="register-form">
+                    <div class="form-group">
+                        <label for="register-email">Email</label>
+                        <input type="email" id="register-email" name="email" required placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="register-password">Password</label>
+                        <input type="password" id="register-password" name="password" required placeholder="••••••••">
+                    </div>
+                    <div class="form-group">
+                        <label for="register-confirm">Confirm Password</label>
+                        <input type="password" id="register-confirm" name="confirm" required placeholder="••••••••">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Register</button>
+                </form>
+                <p class="switch-form">Already have an account? <a href="#" id="showLogin">Login here</a></p>
+            </div>
 
-          <!-- Register form -->
-          <div id="registerForm" style="display: none;">
-            <h2>Create Account</h2>
-            <input id="regEmail" type="email" placeholder="Email" />
-            <input id="regPassword" type="password" placeholder="Password (min 6 chars)" />
-            <input id="regPasswordConfirm" type="password" placeholder="Confirm Password" />
-            <button class="primary" onclick="register()" style="width: 100%;">Register</button>
-            <p style="text-align: center; margin-top: 16px;">
-              Already have an account? <a href="#" onclick="switchToLogin(event)">Login</a>
-            </p>
-          </div>
-
-          <div id="errorMsg" style="color: #d63343; margin-top: 16px; text-align: center; display: none;"></div>
+            <div id="message" class="message"></div>
         </div>
-      </div>
     </div>
-  </div>
 
-  <script>
-      async function login() {
-        const email = document.getElementById('loginEmail').value.trim();
-        const password = document.getElementById('loginPassword').value;
-        const errorEl = document.getElementById('errorMsg');
+    <script>
+        const API_BASE = 'api.php';
 
-        if (!email || !password) {
-          showError('Email and password required');
-          return;
+        // Toggle between login and register forms
+        document.getElementById('showRegister').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('registerForm').style.display = 'block';
+            document.getElementById('message').textContent = '';
+        });
+
+        document.getElementById('showLogin').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('registerForm').style.display = 'none';
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('message').textContent = '';
+        });
+
+        // Login handler
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                const response = await fetch(`${API_BASE}?path=auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    localStorage.setItem('token', data.token);
+                    showMessage('Login successful! Redirecting...', 'success');
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 1000);
+                } else {
+                    showMessage(data.error || 'Login failed', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            }
+        });
+
+        // Register handler
+        document.getElementById('register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+            const confirm = document.getElementById('register-confirm').value;
+
+            if (password !== confirm) {
+                showMessage('Passwords do not match', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}?path=auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage('Registration successful! Please login with your account.', 'success');
+                    // Clear form
+                    document.getElementById('register-form').reset();
+                    // Switch to login form after 2 seconds
+                    setTimeout(() => {
+                        document.getElementById('registerForm').style.display = 'none';
+                        document.getElementById('loginForm').style.display = 'block';
+                        document.getElementById('login-email').value = email;
+                    }, 2000);
+                } else {
+                    showMessage(data.error || 'Registration failed', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            }
+        });
+
+        function showMessage(text, type) {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = text;
+            messageEl.className = `message ${type}`;
+            messageEl.style.display = 'block';
         }
-
-        try {
-          const data = await API.login(email, password);
-          Auth.saveAuth(data.token, data.user_id);
-          window.location.href = 'index.html';
-        } catch (err) {
-          console.error(err);
-          showError(err.message || 'Login failed');
-        }
-      }
-
-      async function register() {
-        const email = document.getElementById('regEmail').value.trim();
-        const password = document.getElementById('regPassword').value;
-        const confirm = document.getElementById('regPasswordConfirm').value;
-
-        if (!email || !password || !confirm) {
-          showError('All fields required');
-          return;
-        }
-
-        if (password !== confirm) {
-          showError('Passwords do not match');
-          return;
-        }
-
-        if (password.length < 6) {
-          showError('Password must be at least 6 characters');
-          return;
-        }
-
-        try {
-          const data = await API.register(email, password);
-          Auth.saveAuth(data.token, data.user_id);
-          window.location.href = 'index.html';
-        } catch (err) {
-          console.error(err);
-          showError(err.message || 'Registration failed');
-        }
-      }
-
-      function switchToRegister(e) {
-        e.preventDefault();
-        document.getElementById('loginForm').style.display = 'none';
-        document.getElementById('registerForm').style.display = 'block';
-        document.getElementById('errorMsg').style.display = 'none';
-      }
-
-      function switchToLogin(e) {
-        e.preventDefault();
-        document.getElementById('registerForm').style.display = 'none';
-        document.getElementById('loginForm').style.display = 'block';
-        document.getElementById('errorMsg').style.display = 'none';
-      }
-
-      function showError(msg) {
-        const errorEl = document.getElementById('errorMsg');
-        errorEl.textContent = msg;
-        errorEl.style.display = 'block';
-      }
-
-      window.onload = () => {
-        const token = Auth.getToken();
-        if (token) {
-          window.location.href = 'index.html';
-        }
-      };
-      
-      function clearStorage() {
-        localStorage.clear();
-        alert('Storage cleared! Please refresh the page.');
-      }
-  </script>
+    </script>
 </body>
 </html>

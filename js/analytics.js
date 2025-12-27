@@ -2,24 +2,30 @@
 const Analytics = {
   async updateUI() {
     const expenses = State.getExpenses();
-    const totalDay = expenses.reduce((s, e) => s + e.amount, '');
-    const totalWeek = totalDay;
-    const totalMonth = totalDay;
-    const caps = State.getCaps();
+    const incomes = State.getIncomes();
+    const spentTotal = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+    const incomeTotal = incomes.reduce((s, i) => s + Number(i.amount || 0), 0);
+    const wallet = State.getWallet();
+    const { monthSpent } = State.computePeriodTotals();
 
-    document.getElementById('summaryTotals').innerHTML = `
-      <p>Day: ${totalDay} EGP / ${caps.day}</p>
-      <p>Week: ${totalWeek} EGP / ${caps.week}</p>
-      <p>Month: ${totalMonth} EGP / ${caps.month}</p>
-    `;
+    // Dashboard summary
+    const dashIncome = document.getElementById('dash-income');
+    const dashExpenses = document.getElementById('dash-expenses');
+    const dashBalance = document.getElementById('dash-balance');
+    if (dashIncome) dashIncome.innerText = formatCurrency(incomeTotal);
+    if (dashExpenses) dashExpenses.innerText = formatCurrency(spentTotal);
+    if (dashBalance) dashBalance.innerText = formatCurrency(wallet);
 
-    const prediction = totalMonth * 1.15;
-    document.getElementById('trendPrediction').innerText =
-      `Expected Next Month: ${prediction.toFixed(2)} EGP`;
+    // Analytics summary
+    const analyticsMonth = document.getElementById('analytics-month');
+    const analyticsBalance = document.getElementById('analytics-balance');
+    if (analyticsMonth) analyticsMonth.innerText = formatCurrency(monthSpent);
+    if (analyticsBalance) analyticsBalance.innerText = formatCurrency(wallet);
   },
 
   renderChart() {
-    const ctx = document.getElementById('expenseChart')?.getContext('2d');
+    const canvas = document.getElementById('expenseChart');
+    const ctx = canvas ? canvas.getContext('2d') : null;
     if (!ctx) return;
 
     const expenses = State.getExpenses();
@@ -50,7 +56,8 @@ const Analytics = {
   },
 
   renderIncomeChart() {
-    const ctx = document.getElementById('incomeChart')?.getContext('2d');
+    const canvas = document.getElementById('incomeChart');
+    const ctx = canvas ? canvas.getContext('2d') : null;
     if (!ctx) return;
 
     const incomes = State.getIncomes();

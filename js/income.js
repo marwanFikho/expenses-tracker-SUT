@@ -13,19 +13,14 @@ const Income = {
   },
 
   render() {
-    const targets = [
-      document.getElementById('incomeList'),
-      document.getElementById('incomeAnalyticsList')
-    ].filter(Boolean);
-
-    targets.forEach(target => {
-      target.innerHTML = '';
-      State.getIncomes().forEach((inc) => {
-        const p = document.createElement('p');
-        const dateStr = new Date(inc.ts).toLocaleDateString();
-        p.innerHTML = `+ ${inc.amount} EGP from ${inc.source} <span style="opacity:0.6;">(${dateStr})</span>`;
-        target.appendChild(p);
-      });
+    const target = document.getElementById('income-list');
+    if (!target) return;
+    target.innerHTML = '';
+    State.getIncomes().forEach((inc) => {
+      const p = document.createElement('p');
+      const dateStr = new Date(inc.ts).toLocaleDateString();
+      p.innerHTML = `+ ${inc.amount} from ${inc.source} <span style="opacity:0.6;">(${dateStr})</span>`;
+      target.appendChild(p);
     });
   }
 };

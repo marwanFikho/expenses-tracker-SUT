@@ -49,8 +49,12 @@ const State = {
     const dayMs = 24 * 3600 * 1000;
     const weekStart = now - 7 * dayMs;
     const monthStart = now - 30 * dayMs;
-    const weekSpent = this.data.expenses.filter(e => e.ts >= weekStart).reduce((s, e) => s + e.amount, 0);
-    const monthSpent = this.data.expenses.filter(e => e.ts >= monthStart).reduce((s, e) => s + e.amount, 0);
+    const weekSpent = this.data.expenses
+      .filter(e => Number(e.ts) >= weekStart)
+      .reduce((s, e) => s + Number(e.amount || 0), 0);
+    const monthSpent = this.data.expenses
+      .filter(e => Number(e.ts) >= monthStart)
+      .reduce((s, e) => s + Number(e.amount || 0), 0);
     return { weekSpent, monthSpent };
   }
 };

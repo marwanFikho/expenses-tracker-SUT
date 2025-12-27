@@ -1,237 +1,284 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Expense Tracker</title>
-  <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Frontend Module System -->
-  <script src="../js/api.js"></script>
-  <script src="../js/auth.js"></script>
-  <script src="../js/state.js"></script>
-  <script src="../js/ui.js"></script>
-  <script src="../js/analytics.js"></script>
-  <script src="../js/expenses.js"></script>
-  <script src="../js/income.js"></script>
-  <script src="../js/settings.js"></script>
-  <script src="../js/expense-flow.js"></script>
-  <script src="../js/chatbot.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Tracker</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  
-  <div id="bg-ripple" aria-hidden="true"></div>
-  <div id="effects" aria-hidden="true"></div>
+    <!-- Top Navigation Bar -->
+    <nav class="top-navbar">
+        <div class="nav-brand">
+            <h2>💰 Expense Tracker</h2>
+        </div>
+        <div class="nav-links">
+            <a href="#home" class="nav-link active" data-page="home">Home</a>
+            <a href="#dashboard" class="nav-link" data-page="dashboard">Dashboard</a>
+            <a href="#income" class="nav-link" data-page="income">Income</a>
+            <a href="#expenses" class="nav-link" data-page="expenses">Expenses</a>
+            <a href="#analytics" class="nav-link" data-page="analytics">Analytics</a>
+            <a href="#settings" class="nav-link" data-page="settings">Settings</a>
+        </div>
+        <div class="nav-actions">
+            <button id="theme-toggle" class="btn-icon" title="Toggle Dark/Light Mode">🌙</button>
+            <button id="logout-btn" class="btn btn-secondary">Logout</button>
+        </div>
+    </nav>
 
-  <div class="content">
-    <div class="container">
-      <div id="dashboard" class="page active">
-        
-        <div class="page-header">
-          
-          <div>
-            <h2 class="page-title">Dashboard</h2>
-            <p class="page-subtitle">Track your wallet and spending in one place.</p>
-          </div>
-          
-          <div class="card" style="min-width:240px;">
-            <h3>Wallet Balance</h3>
-            <h2 style="margin:6px 0 0;">
-              <span id="walletBalance">0</span> EGP
-            </h2>
-          </div>
+    <!-- Main Content Container -->
+    <div class="main-container">
+        <!-- HOME PAGE -->
+        <div id="home-page" class="page active">
+            <div class="hero-section">
+                <h1>Welcome, <span id="user-email"></span>! 👋</h1>
+                <p class="hero-subtitle">Take control of your finances with our smart expense tracking system</p>
+                
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">📊</div>
+                        <h3>Track Expenses</h3>
+                        <p>Monitor your daily spending and stay within budget</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">💵</div>
+                        <h3>Manage Income</h3>
+                        <p>Record all your income sources in one place</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📈</div>
+                        <h3>Analytics</h3>
+                        <p>Visualize your financial data with insightful charts</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🤖</div>
+                        <h3>AI Assistant</h3>
+                        <p>Get smart financial advice powered by AI</p>
+                    </div>
+                </div>
 
+                <div class="cta-section">
+                    <h2>Ready to start?</h2>
+                    <p>Begin by adding your income sources, then track your expenses</p>
+                    <button class="btn btn-primary btn-large" onclick="navigateToPage('income')">Get Started →</button>
+                </div>
+            </div>
         </div>
 
-        <div class="grid grid-2">
-          
-          <div class="card">
-            <h3>Add Expense <span class="section-note">Plan before you pay</span></h3>
-            <input id="amount" type="number" placeholder="Amount" />
-            <input id="merchant" placeholder="Merchant/Place (what)" />
-            <button class="primary" onclick="startExpenseFlow()">Add Expense</button>
-          </div>
-          
-          <div class="card">
-            <h3>Recent Expenses</h3>
-            <div id="recentExpenses"></div>
-          </div>
+        <!-- DASHBOARD PAGE -->
+        <div id="dashboard-page" class="page">
+            <div class="page-header">
+                <h1>Dashboard</h1>
+                <p>Overview of your financial status</p>
+            </div>
 
-        </div>
-      </div>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Current Balance</div>
+                    <div class="stat-value" id="dash-balance">$0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Income</div>
+                    <div class="stat-value" id="dash-income">$0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Expenses</div>
+                    <div class="stat-value" id="dash-expenses">$0.00</div>
+                </div>
+            </div>
 
-      <div id="profile" class="page">
-        
-        <div class="page-header">  
-          <div>
-            <h2 class="page-title">Profile</h2>
-            <p class="page-subtitle">Manage your wallet, caps, and preferences.</p>
-          </div>
-        </div>
-
-        <div class="grid grid-3">
-
-          <div class="card">
-            <h3>Add Money</h3>
-            <input id="addMoneyInput" type="number" placeholder="Amount" min="1" />
-            <input id="addMoneySource" type="text" placeholder="Source (e.g., salary, gift)" />
-            <button class="primary" onclick="topUpWallet()">Add Money</button>
-          </div>
-
-          <div class="card">
-            <h3>Expense Caps</h3>
-            <input id="capDay" type="number" placeholder="Daily Cap" />
-            <input id="capWeek" type="number" placeholder="Weekly Cap" />
-            <input id="capMonth" type="number" placeholder="Monthly Cap" />
-            <button class="primary" onclick="saveCaps()">Save Caps</button>
-          </div>
-
-          <div class="card">
-            <h3>Preferences</h3>
-            
-            <label>
-              <input id="aiPref" type="checkbox" checked /> Enable AI Advice
-            </label>
-            
-            <button class="primary" onclick="savePreferences()">Save Preferences</button>
-          </div>
-          
-          <div class="card">
-            <h3>Recent Income</h3>
-            <div id="incomeList"></div>
-          </div>
-
-        </div>
-      </div>
-
-      <div id="analytics" class="page">
-        
-        <div class="page-header">
-          <div>
-            <h2 class="page-title">Analytics</h2>
-            <p class="page-subtitle">Understand trends and get tips.</p>
-          </div>
-        </div>
-        
-        <div class="grid grid-2">
-          
-          <div class="card">
-            <h3>Spending Summary</h3>
-            <div id="summaryTotals">Loading...</div>
-          </div>
-
-          <div class="card">
-            <h3>Trend Prediction</h3>
-            <div id="trendPrediction">Loading...</div>
-          </div>
-          
+            <div class="dashboard-sections">
+                <div class="dash-section">
+                    <h3>Recent Expenses</h3>
+                    <div id="dash-recent-expenses" class="item-list"></div>
+                </div>
+                <div class="dash-section">
+                    <h3>Spending Caps</h3>
+                    <div id="dash-caps" class="caps-list"></div>
+                </div>
+            </div>
         </div>
 
-        <!-- Row 1: Detailed Lists -->
-        <div class="grid grid-2" style="margin-top:16px;">
+        <!-- INCOME PAGE -->
+        <div id="income-page" class="page">
+            <div class="page-header">
+                <h1>Income Management</h1>
+                <p>Add and track your income sources</p>
+            </div>
 
-          <div class="card">
-            <h3>Detailed Expenses</h3>
-            <div id="analyticsList"></div>
-          </div>
-          
-          <div class="card">
-            <h3>Recent Income</h3>
-            <div id="incomeAnalyticsList"></div>
-          </div>
+            <div class="form-card">
+                <h3>Add New Income</h3>
+                <form id="income-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="income-source">Source</label>
+                            <input type="text" id="income-source" required placeholder="e.g., Salary, Freelance">
+                        </div>
+                        <div class="form-group">
+                            <label for="income-amount">Amount</label>
+                            <input type="number" id="income-amount" step="0.01" required placeholder="0.00">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Income</button>
+                </form>
+            </div>
 
+            <div class="data-section">
+                <h3>Income History</h3>
+                <div id="income-list" class="item-list"></div>
+            </div>
         </div>
 
-        <!-- Row 2: Charts -->
-        <div class="grid grid-2" style="margin-top:16px;">
-          
-          <div class="card">
-            <h3>Spending by Merchant</h3>
-            <canvas id="expenseChart" width="400" height="200"></canvas>
-          </div>
-          
-          <div class="card">
-            <h3>Income by Source</h3>
-            <canvas id="incomeChart" width="400" height="200"></canvas>
-          </div>
+        <!-- EXPENSES PAGE -->
+        <div id="expenses-page" class="page">
+            <div class="page-header">
+                <h1>Expense Tracking</h1>
+                <p>Monitor and manage your spending</p>
+            </div>
 
+            <div class="form-card">
+                <h3>Add New Expense</h3>
+                <form id="expense-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="expense-category">Category</label>
+                            <input type="text" id="expense-category" required placeholder="e.g., Food, Transport">
+                        </div>
+                        <div class="form-group">
+                            <label for="expense-amount">Amount</label>
+                            <input type="number" id="expense-amount" step="0.01" required placeholder="0.00">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Expense</button>
+                </form>
+            </div>
+
+            <div class="data-section">
+                <h3>Expense History</h3>
+                <div id="expense-list" class="item-list"></div>
+            </div>
+
+            <div class="form-card">
+                <h3>Set Spending Caps</h3>
+                <form id="caps-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="cap-daily">Daily Cap</label>
+                            <input type="number" id="cap-daily" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="cap-weekly">Weekly Cap</label>
+                            <input type="number" id="cap-weekly" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="cap-monthly">Monthly Cap</label>
+                            <input type="number" id="cap-monthly" step="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Set Caps</button>
+                </form>
+            </div>
         </div>
 
-        <div class="card" style="margin-top:16px;">
-          <div id="aispace">
-            <h3>AI Advice</h3>
-            <button class="primary" id="getAIAdviceBtn">Get AI Advice</button>
-          </div>
-          <div id="aiAdvice">Enable AI in Profile.</div>
+        <!-- ANALYTICS PAGE -->
+        <div id="analytics-page" class="page">
+            <div class="page-header">
+                <h1>Financial Analytics</h1>
+                <p>Insights and AI-powered advice</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Balance</div>
+                    <div class="stat-value" id="analytics-balance">$0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">This Month</div>
+                    <div class="stat-value" id="analytics-month">$0.00</div>
+                </div>
+            </div>
+
+            <div class="ai-section">
+                <h3>🤖 AI Financial Advisor</h3>
+                <button id="get-advice-btn" class="btn btn-primary">Get AI Advice</button>
+                <div id="ai-advice" class="ai-response"></div>
+            </div>
+
+            <div class="ai-section">
+                <h3>💬 Chat with AI Assistant</h3>
+                <div id="chatbot-messages" class="chatbot-messages"></div>
+                <form id="chatbot-form">
+                    <div class="chatbot-input">
+                        <input type="text" id="chatbot-question" placeholder="Ask me anything about your finances..." required>
+                        <button type="submit" class="btn btn-primary">Send</button>
+                    </div>
+                </form>
+            </div>
         </div>
-      </div>
+
+        <!-- SETTINGS PAGE -->
+        <div id="settings-page" class="page">
+            <div class="page-header">
+                <h1>Settings</h1>
+                <p>Manage your account preferences</p>
+            </div>
+
+            <div class="form-card">
+                <h3>Account Information</h3>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="settings-email" readonly>
+                </div>
+            </div>
+
+            <div class="form-card">
+                <h3>Change Password</h3>
+                <form id="change-password-form">
+                    <div class="form-group">
+                        <label for="current-password">Current Password</label>
+                        <input type="password" id="current-password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="new-password">New Password</label>
+                        <input type="password" id="new-password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirm-password">Confirm New Password</label>
+                        <input type="password" id="confirm-password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Update Password</button>
+                </form>
+            </div>
+
+            <div class="form-card">
+                <h3>AI Preferences</h3>
+                <div class="toggle-group">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="ai-enabled">
+                        <span>Enable AI Features</span>
+                    </label>
+                </div>
+                <button id="save-prefs-btn" class="btn btn-primary">Save Preferences</button>
+            </div>
+
+            <div class="danger-zone">
+                <h3>Danger Zone</h3>
+                <button class="btn btn-danger" onclick="if(confirm('Are you sure you want to delete your account?')) alert('Account deletion feature coming soon')">Delete Account</button>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <div class="nav">
-    <button onclick="showPage('dashboard')">Dashboard</button>
-    <button onclick="showPage('analytics')">Analytics</button>
-    <button onclick="showPage('profile')">Profile</button>
-    <button id="themeToggle" onclick="toggleTheme()">🌙</button>
-    <button onclick="logout()" style="margin-left: auto; background: #dc3545;">Logout</button>
-  </div>
-
-  <!-- Confirmation Modal -->
-  <div id="confirmModal" class="modal" aria-hidden="true" role="dialog" aria-labelledby="confirmTitle" aria-describedby="confirmDesc">
-    <div class="modal-content">
-      <h3 id="confirmTitle">Before you spend...</h3>
-      <p id="confirmDesc">Let’s quickly check if this expense is a need or a want.</p>
-
-      <div class="modal-section">
-        <label for="needWantSelect"><b>Is this a <i>Need</i> or a <i>Want</i>?</b></label>
-        <select id="needWantSelect">
-          <option value="need">Need</option>
-          <option value="want">Want</option>
-        </select>
-      </div>
-
-      <div class="modal-section">
-        <p id="habitSummary">Loading your habits...</p>
-      </div>
-
-      <div class="modal-section caps">
-        <p id="capsSummary">Caps: Weekly — <span id="weeklyCap">0</span> | Monthly — <span id="monthlyCap">0</span></p>
-        <p id="usageSummary">Usage: Weekly — <span id="weeklySpent">0</span> | Monthly — <span id="monthlySpent">0</span></p>
-      </div>
-
-      <!-- Chatbot Section (shows only for wants) -->
-      <div id="chatbotSection" class="modal-section chatbot-container" style="display: none;">
-        <div class="chatbot-header">
-          <h4>💬 Smart Spending Advisor</h4>
-          <p class="chatbot-subtitle">Let's reconsider this purchase</p>
-        </div>
-        
-        <div id="chatMessages" class="chat-messages">
-          <div class="chat-message ai-message">
-            <p>Hi! I noticed this is a <strong>Want</strong> category purchase. Before you spend, let me help you think this through. What's your main reason for this purchase?</p>
-          </div>
-        </div>
-
-        <div class="chat-input-group">
-          <input 
-            id="chatInput" 
-            type="text" 
-            placeholder="Type your response..." 
-            onkeypress="if(event.key==='Enter') sendChatMessage()"
-          />
-          <button class="chat-send-btn" onclick="sendChatMessage()">Send</button>
-        </div>
-      </div>
-
-      <div class="modal-actions">
-        <button class="secondary" onclick="cancelExpenseFlow()">Cancel</button>
-        <button class="primary" onclick="confirmExpenseFlow()">Confirm & Add</button>
-      </div>
-      
-    </div>
-  </div>
-
-  <script src="../app.js"></script>
+        <!-- JS Modules -->
+        <script src="js/api.js"></script>
+        <script src="js/auth.js"></script>
+        <script src="js/state.js"></script>
+        <script src="js/ui.js"></script>
+        <script src="js/settings.js"></script>
+        <script src="js/expenses.js"></script>
+        <script src="js/income.js"></script>
+        <script src="js/analytics.js"></script>
+        <script src="js/chatbot.js"></script>
+        <script src="js/expense-flow.js"></script>
+        <script src="app.js"></script>
 </body>
 </html>

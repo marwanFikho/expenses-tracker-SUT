@@ -25,7 +25,7 @@ $db_name = 'expense_tracker';
 $jwt_secret = 'root';
 $cfg = [
     'url' => "https://router.huggingface.co/v1/chat/completions",
-    'key' => "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",
+    'key' => "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",
     'model' => "openai/gpt-oss-20b:groq",
 ];
 

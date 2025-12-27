@@ -2,7 +2,13 @@
 const UI = {
   showPage(id) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active');
+  },
+
+  showPageBySlug(slug) {
+    const id = `${slug}-page`;
+    this.showPage(id);
   },
 
   showToast(message) {
@@ -43,12 +49,14 @@ const UI = {
   },
 
   toggleTheme() {
-    const toggleBtn = document.getElementById('themeToggle');
+    const toggleBtn = document.getElementById('theme-toggle');
+    if (!toggleBtn) return;
     const rect = toggleBtn.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
 
-    const goingDark = !document.body.classList.contains('dark-mode');
+    const currentTheme = (document.documentElement.getAttribute('data-theme') === 'dark') ? 'dark' : 'light';
+    const goingDark = currentTheme !== 'dark';
     const targetColor = goingDark ? '#121212' : '#f0f2f5';
 
     const ripple = document.createElement('div');
@@ -64,8 +72,11 @@ const UI = {
 
     const bgLayer = document.getElementById('bg-ripple') || document.body;
     bgLayer.appendChild(ripple);
-    document.body.classList.toggle('dark-mode');
-    toggleBtn.innerText = document.body.classList.contains('dark-mode') ? "☀️" : "🌙";
+
+    const newTheme = goingDark ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    try { localStorage.setItem('theme', newTheme); } catch {}
+    toggleBtn.innerText = newTheme === 'dark' ? "☀️" : "🌙";
 
     setTimeout(() => {
       ripple.style.transition = 'opacity 120ms ease';
@@ -75,29 +86,36 @@ const UI = {
   },
 
   setWalletBalance(amount) {
-    document.getElementById('walletBalance').innerText = amount;
+    const dash = document.getElementById('dash-balance');
+    const analytics = document.getElementById('analytics-balance');
+    if (dash) dash.innerText = formatCurrency(amount);
+    if (analytics) analytics.innerText = formatCurrency(amount);
   },
 
   setCapInputs(day, week, month) {
-    document.getElementById('capDay').value = day || '';
-    document.getElementById('capWeek').value = week || '';
-    document.getElementById('capMonth').value = month || '';
+    const d = document.getElementById('cap-daily');
+    const w = document.getElementById('cap-weekly');
+    const m = document.getElementById('cap-monthly');
+    if (d) d.value = day || '';
+    if (w) w.value = week || '';
+    if (m) m.value = month || '';
   },
 
   getCapInputs() {
     return {
-      day: Number(document.getElementById('capDay').value),
-      week: Number(document.getElementById('capWeek').value),
-      month: Number(document.getElementById('capMonth').value)
+      day: Number(document.getElementById('cap-daily')?.value || 0),
+      week: Number(document.getElementById('cap-weekly')?.value || 0),
+      month: Number(document.getElementById('cap-monthly')?.value || 0)
     };
   },
 
   setAIPref(enabled) {
-    document.getElementById('aiPref').checked = enabled;
+    const el = document.getElementById('ai-enabled');
+    if (el) el.checked = !!enabled;
   },
 
   getAIPref() {
-    return document.getElementById('aiPref').checked;
+    return !!document.getElementById('ai-enabled')?.checked;
   },
 
   clearElement(id) {
@@ -105,3 +123,9 @@ const UI = {
     if (el) el.innerHTML = '';
   }
 };
+
+function formatCurrency(n) {
+  const num = Number(n);
+  if (!isFinite(num)) return `$0.00`;
+  return `$${num.toFixed(2)}`;
+}

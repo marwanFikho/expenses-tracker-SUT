@@ -1,13 +1,13 @@
 // Chatbot & AI
 const ChatBot = {
   async sendMessage() {
-    const chatInput = document.getElementById('chatInput');
+    const chatInput = document.getElementById('chatbot-question');
     const userMessage = chatInput.value.trim();
 
     if (!userMessage) return;
 
     // Add user message
-    const chatMessages = document.getElementById('chatMessages');
+    const chatMessages = document.getElementById('chatbot-messages');
     const userMsgEl = document.createElement('div');
     userMsgEl.className = 'chat-message user-message';
     userMsgEl.innerHTML = `<p>${userMessage}</p>`;
@@ -22,8 +22,8 @@ const ChatBot = {
 
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
-    const sendBtn = document.querySelector('.chat-send-btn');
-    sendBtn.disabled = true;
+    const sendBtn = document.querySelector('#chatbot-form button[type="submit"]');
+    if (sendBtn) sendBtn.disabled = true;
 
     try {
       const response = await API.chatbot(userMessage, pendingExpense?.amount || 0, pendingExpense?.merchant || '');
@@ -44,7 +44,7 @@ const ChatBot = {
       errorEl.innerHTML = '<p>Sorry, I had trouble responding. Please try again.</p>';
       chatMessages.appendChild(errorEl);
     } finally {
-      sendBtn.disabled = false;
+      if (sendBtn) sendBtn.disabled = false;
     }
   },
 
@@ -54,7 +54,7 @@ const ChatBot = {
       return;
     }
 
-    const adviceEl = document.getElementById('aiAdvice');
+    const adviceEl = document.getElementById('ai-advice');
     adviceEl.innerText = 'Fetching AI advice…';
 
     try {
